@@ -1,0 +1,54 @@
+name: inmc-urb
+version: '${version}'
+main: com.inmc.urb.UrbPlugin
+api-version: '${apiVersion}'   # build.gradle.kts 의 inmc { paper } 에서 유도됨
+description: 에어드랍형 랜덤박스 - GUI 관리, 티어 추첨, 오픈 연출, 통계, 디스코드 알림까지 의존성 없이
+authors: [ INMC ]
+website: https://github.com/inmc
+
+# load: OMIT on purpose.
+#
+# Declaring BEFORE for every integration made Paper report
+#   "Plugin dependency cycle: [inmc-urb, MMOItems, nightcore, ItemsAdder, nightcore]"
+# and break the cycle by dropping one of our edges - which silently cost us classpath access
+# to ItemsAdder. None of these are needed at load time: every hook is resolved reflectively
+# through the owning plugin's own classloader, and IntegrationListener re-probes whenever one
+# of them enables, so load order does not matter at all.
+dependencies:
+  server:
+    # 필수 의존은 이것 하나뿐이다. core 가 kotlin-stdlib 과 공용 프레임워크를 들고 있어서
+    # join-classpath 없이는 클래스가 보이지 않는다 — 없으면 Paper 가 아예 우리를 켜지 않는다.
+    inmc-core:      { load: BEFORE, required: true,  join-classpath: true }
+    Vault:
+      load: OMIT
+      required: false
+      join-classpath: true
+    PlaceholderAPI:
+      load: OMIT
+      required: false
+      join-classpath: true
+    MMOItems:
+      load: OMIT
+      required: false
+      join-classpath: true
+    MythicLib:
+      load: OMIT
+      required: false
+      join-classpath: true
+    WorldGuard:
+      load: OMIT
+      required: false
+      join-classpath: true
+    Lands:
+      load: OMIT
+      required: false
+      join-classpath: true
+    ItemsAdder:
+      load: OMIT
+      required: false
+      join-classpath: true
+
+permissions:
+  urb.admin:
+    description: Full administrative access to inmc-urb
+    default: op

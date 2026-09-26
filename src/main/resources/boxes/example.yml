@@ -1,0 +1,270 @@
+# ============================================================================
+#  예시 상자  ·  /urb GUI 에서 편집하는 것을 권장합니다
+# ----------------------------------------------------------------------------
+#  이 파일은 boxes/ 폴더 안에 상자 하나당 하나씩 만들어집니다.
+#  파일 이름이 곧 상자 이름입니다. (이 상자는 enabled: false 라 동작하지 않습니다)
+# ============================================================================
+
+enabled: false
+
+display-name: "<gradient:#ffd700:#ff8c00>보급 상자</gradient>"
+lore:
+  - "<gray>어딘가에 떨어진 보급품.</gray>"
+  - "<dark_gray>열쇠가 필요합니다.</dark_gray>"
+
+# 맵에 나타날 블록. 블록 엔티티가 아니어도 됩니다 (STONE, DEEPSLATE, HAY_BLOCK ...)
+block: "minecraft:chest"
+
+open:
+  # DIRECT = 인벤토리로 바로 지급
+  # GUI    = 상자 창을 열어 직접 꺼냄
+  # DROP   = 상자가 있던 자리에 아이템이 바닥으로 쏟아짐 (주변 사람도 주울 수 있음)
+  #   어느 방식이든 맵에 생성된 상자는 한 번 열리면 아이템을 안 꺼내도 사라집니다.
+  mode: GUI
+
+  # 여는 데 걸리는 시간(초). 이 동안 움직이면 취소됩니다.
+  time: 3
+
+  # 취소된 뒤 다시 시도하기까지의 대기 시간(초)
+  reopen-cooldown: 10
+
+  # 한 번에 나올 보상 개수 범위.
+  #   아래 rewards 가 54개이고 max-rolls 가 2 라면 결과는 1~2개입니다.
+  #   전부 떨어지지 않아도 min-rolls 개는 반드시 나옵니다.
+  min-rolls: 1
+  max-rolls: 2
+
+  # 누구나 /urb info 로 확률표를 볼 수 있게 할지
+  preview: true
+
+  # 상자를 열 때마다 실행할 명령어 (보상과 무관)
+  commands: []
+
+conditions:
+  # 상자를 열 때 소모할 금액. Vault 가 없으면 무시됩니다.
+  money: 0.0
+
+  # 열쇠 아이템 — 인벤토리에 있어야 열리고, 열 때 1개가 소모됩니다.
+  #   GUI 의 '오픈 조건' 에서 손에 든 아이템으로 등록하는 것이 가장 쉽습니다.
+  # key:
+  #   item: "minecraft:tripwire_hook"
+  #   mode: REFERENCE
+  #   material: "minecraft:tripwire_hook"
+  #   name: "보급 상자 열쇠"
+
+  # 캡슐 아이템 — 손에 들고 우클릭하면 이 상자가 열립니다.
+  # capsule:
+  #   item: "minecraft:ender_chest"
+  #   mode: REFERENCE
+  #   material: "minecraft:ender_chest"
+  #   name: "보급 캡슐"
+
+spawn:
+  # RANDOM_AREA  = 아래 area 안의 랜덤 위치
+  # FIXED_POINTS = 아래 points 중 한 곳 (주기마다 다시 생성)
+  # PERMANENT    = 아래 points 전부에 영구 설치. 소멸하지 않으며,
+  #                열쇠나 소모 금액이 반드시 있어야 열립니다(무한 획득 방지).
+  #                항상 상자 창으로 열리고, 창을 닫으면 남은 아이템이
+  #                바닥이 아니라 인벤토리로 들어갑니다.
+  mode: RANDOM_AREA
+  world: "world"
+
+  # RECTANGLE = 두 코너로 만든 사각형 (x1/z1 ~ x2/z2)
+  # CIRCLE    = 중심 좌표 + 반지름. 면적 기준으로 고르게 뿌려집니다.
+  area:
+    shape: RECTANGLE
+    x1: -500
+    z1: -500
+    x2: 500
+    z2: 500
+    center:
+      x: 0
+      z: 0
+    radius: 500
+
+  # "월드/x/y/z" 형식
+  points: []
+
+  # 동굴 스폰 허용 여부.
+  #   꺼짐: 지표면에만 생성됩니다.
+  #   켜짐: 지표면을 먼저 시도하고, 실패하면 아래 y 범위의 동굴 공간을 찾습니다.
+  # 어느 쪽이든 흙 속·공중·물 위·용암 위에는 생성되지 않고,
+  # 랜덤 영역 모드에서는 꽃이나 양탄자를 부수지 않습니다.
+  allow-cave: false
+  min-y: null
+  max-y: null
+
+  # 자동 에어드랍 주기 (0 = 사용 안 함)
+  interval: "1h"
+
+  # 생성된 상자가 사라지기까지의 시간 (0 = 영구)
+  #   서버를 재시작해도 이어서 계산됩니다.
+  despawn-after: "10m"
+
+  # 동시에 존재할 수 있는 이 상자의 최대 개수 (대기 중인 것 포함)
+  max-count: 3
+
+  # 자동 생성이 한 번 돌 때 시도할 개수
+  amount-per-cycle: 1
+
+messages:
+  # 비워두면 config.yml 의 defaults.messages 값을 사용합니다.
+  spawn: null
+  despawn: null
+  open: null
+  broadcast-spawn: true
+  broadcast-despawn: true
+  broadcast-open: true
+
+  # /urb spawnnow / GUI '지금 소환' 으로 만든 상자의 등장 메시지
+  broadcast-manual-spawn: false
+
+  # 캡슐로 열었을 때의 오픈 메시지
+  broadcast-capsule-open: true
+
+  discord-alert: true
+
+  # 비워두면 config.yml 의 주소를 따릅니다
+  discord-spawn-webhook: null
+  discord-reward-webhook: null
+
+# ---------------------------------------------------------------------------
+# 연출 (비워두면 config.yml 의 defaults.visual 값을 따릅니다)
+# ---------------------------------------------------------------------------
+visual:
+  # NONE / SPARKLE / FLAME_RING / SOUL_RISE / ENCHANT_SWIRL / PORTAL_VORTEX
+  # END_ROD_BEAM / HEART_FLOAT / NOTE_POP / CLOUD_HALO / GOLD_DUST
+  # SPIRAL / FOUNTAIN / CRIT_BURST / SPARK_RING / RAINBOW
+  particle: NONE
+
+  # 상자 위에 이름과 남은 시간 표시
+  hologram: false
+
+  # 오픈 연출: NONE / ROULETTE / REVEAL
+  animation: NONE
+
+  # 획득 연출: NONE / TOTEM / FIREWORK / LIGHTNING / FANFARE / BEAM
+  flair: NONE
+
+  # (구버전 호환) flair 가 없을 때만 참조됩니다
+  totem-effect: false
+
+# ---------------------------------------------------------------------------
+# 보상 티어 — 보상을 여러 풀로 나누고, 풀마다 따로 추첨합니다
+#
+#   티어가 하나도 없으면 모든 보상이 open.min-rolls ~ open.max-rolls 하나의
+#   범위를 두고 경쟁합니다. 이 경우 희귀템의 확률을 올리면 일반템이 밀려납니다.
+#   티어를 쓰면 "일반 2개 + 희귀 0~1개" 처럼 서로 간섭하지 않게 나눌 수 있습니다.
+#
+#   아래 rewards 항목에 tier: "희귀" 처럼 이름을 적으면 그 풀에서 뽑힙니다.
+#   tier 를 적지 않은 보상은 '기본 풀' 에서 open.min-rolls~max-rolls 로 뽑힙니다.
+#   min-rolls: 0 이면 그 티어에서 아무것도 안 나올 수 있습니다.
+# ---------------------------------------------------------------------------
+tiers: {}
+#  희귀:
+#    enabled: true
+#    min-rolls: 0
+#    max-rolls: 1
+
+# ---------------------------------------------------------------------------
+# 자동 생성 시간대 — 여기서 막히는 것은 '자동' 생성뿐입니다.
+#   /urb spawn, /urb spawnnow, 캡슐 오픈은 시간대와 무관하게 동작합니다.
+#   to 가 from 보다 이르면 자정을 넘겨 이어집니다 (예: 22:00 ~ 02:00).
+# ---------------------------------------------------------------------------
+schedule:
+  enabled: false
+  days: [ MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY ]
+  from: "00:00"
+  to: "23:59"
+
+# ---------------------------------------------------------------------------
+# 노출 제어 — 조용히 숨겨두는 '찾기 컨텐츠' 상자에 사용합니다
+# ---------------------------------------------------------------------------
+discovery:
+  # /urb search 목록에 표시할지
+  searchable: true
+  # 나침반 추적과 안내 파티클을 허용할지
+  trackable: true
+
+# ---------------------------------------------------------------------------
+# 1인 제한 — 같은 유저가 같은 상자를 반복해서 먹는 것을 막습니다
+# ---------------------------------------------------------------------------
+limits:
+  # 같은 유저가 이 상자를 다시 열기까지의 대기 시간 (0 = 제한 없음)
+  per-player-cooldown: "0s"
+
+  # 한 유저가 열 수 있는 횟수 (0 = 무제한)
+  max-opens-per-player: 0
+
+  # 위 횟수가 다시 채워지는 주기 (0 = 초기화 없음 = 평생 제한)
+  #   예: max-opens-per-player: 3 / reset-after: "1d" 이면 하루에 3번까지.
+  #   주기는 서버 시계가 아니라 그 유저가 상자를 처음 연 시각부터 셉니다.
+  reset-after: "0s"
+
+regions:
+  # 목록이 비어 있으면 필터를 사용하지 않습니다.
+  # WHITELIST = 목록 안에서만 생성 / BLACKLIST = 목록 안에서는 생성하지 않음
+  worldguard:
+    mode: WHITELIST
+    list: []
+  lands:
+    mode: WHITELIST
+    list: []
+
+# ---------------------------------------------------------------------------
+# 보상
+#   item  : 아이템 식별자. 지급할 때마다 이 정의대로 새로 만들어집니다.
+#           minecraft:diamond           바닐라
+#           mmoitems:SWORD:EXCALIBUR    MMOItems (카테고리:ID)
+#           itemsadder:ruby             ItemsAdder (네임스페이스:ID)
+#           nexo:ruby                   Nexo
+#           oraxen:ruby                 Oraxen
+#           ecoitems:ruby               EcoItems
+#           snapshot                    참조로 표현할 수 없어 아래 snapshot 을 사용
+#   mode  : REFERENCE = 원본 정의대로 매번 새로 생성 (권장)
+#           SNAPSHOT  = 등록 당시 모습 그대로 고정
+#   snapshot : 이름·인챈트가 붙은 커스텀 아이템처럼 식별자로 표현할 수 없을 때
+#              GUI 가 자동으로 넣어주는 Base64 데이터입니다.
+#   chance   : 0.01 ~ 100 (소수점 두 자리)
+#   announce : true 면 획득 시 서버 공지 + 공지 확인창 기록 + 디스코드 알림
+#   commands : 이 보상이 당첨되면 실행할 명령어
+#   give-item: false 면 아이템은 주지 않고 명령어만 실행합니다.
+#   tier     : 위 tiers 에 정의한 풀 이름. 적지 않으면 기본 풀에서 뽑힙니다.
+# ---------------------------------------------------------------------------
+rewards:
+  '0':
+    id: "example1"
+    item: "minecraft:diamond"
+    mode: REFERENCE
+    material: "minecraft:diamond"
+    chance: 25.0
+    min-amount: 1
+    max-amount: 3
+  '1':
+    id: "example2"
+    item: "minecraft:iron_ingot"
+    mode: REFERENCE
+    material: "minecraft:iron_ingot"
+    chance: 80.0
+    min-amount: 4
+    max-amount: 16
+  '2':
+    id: "example3"
+    item: "minecraft:netherite_ingot"
+    mode: REFERENCE
+    material: "minecraft:netherite_ingot"
+    chance: 0.5
+    min-amount: 1
+    max-amount: 1
+    announce: true
+  '3':
+    id: "example4"
+    item: "minecraft:experience_bottle"
+    mode: REFERENCE
+    material: "minecraft:experience_bottle"
+    chance: 40.0
+    min-amount: 1
+    max-amount: 1
+    give-item: false
+    commands:
+      - "xp add {플레이어네임} 100 points"
