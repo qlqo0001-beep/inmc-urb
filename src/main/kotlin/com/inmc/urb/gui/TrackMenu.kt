@@ -93,8 +93,8 @@ class TrackMenu(
         lore.add("")
         lore.add("<yellow>▶ 클릭하여 나침반으로 추적</yellow>")
 
-        val material = if (sighting.queued) Material.MAP else (box?.blockMaterial ?: Material.CHEST)
-        return Icon.of(material, sighting.displayName, lore)
+        if (!sighting.queued && box != null) return blockIcon(box, sighting.displayName, lore)
+        return Icon.of(if (sighting.queued) Material.MAP else Material.CHEST, sighting.displayName, lore)
     }
 
     private fun repage(who: org.bukkit.entity.HumanEntity, target: Int) {
