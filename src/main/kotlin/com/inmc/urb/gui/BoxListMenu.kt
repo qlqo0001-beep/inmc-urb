@@ -114,7 +114,7 @@ class BoxListMenu(urb: Urb, private var page: Int = 0) : Menu(urb, SIZE, TITLE) 
             "<dark_gray>${box.name}</dark_gray>",
             "",
             "<gray>상태: </gray>${Icon.toggle(box.enabled)}",
-            "<gray>블록: <white>${box.blockMaterial.name}</white></gray>",
+            "<gray>블록: <white>${box.block.serialize()}</white></gray>",
             "<gray>보상: <white>${box.rewards.size}개</white> <dark_gray>(최대 ${box.minRolls}~${box.maxRolls}개 배출)</dark_gray></gray>",
             "<gray>생성 방식: <white>${if (box.spawnMode == com.inmc.urb.box.SpawnMode.RANDOM_AREA) "랜덤 영역" else "특정 좌표"}</white></gray>",
             "<gray>자동 생성: <white>${if (box.autoSpawnIntervalSeconds > 0) Durations.formatShort(box.autoSpawnIntervalSeconds) else "사용 안 함"}</white></gray>",
@@ -124,7 +124,7 @@ class BoxListMenu(urb: Urb, private var page: Int = 0) : Menu(urb, SIZE, TITLE) 
             "<yellow>▶ 좌클릭: 상자 관리</yellow>",
             "<red>▶ Q 또는 F: 상자 삭제</red>",
         )
-        return Icon.of(box.blockMaterial, box.displayName, lore)
+        return blockIcon(box, box.displayName, lore)
     }
 
     private fun confirmDelete(player: Player, box: RandomBox) {

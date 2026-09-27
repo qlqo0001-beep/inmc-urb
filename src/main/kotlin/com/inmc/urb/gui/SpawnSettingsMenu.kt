@@ -174,8 +174,8 @@ class SpawnSettingsMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, ti
         // happens to be the only way to name an ItemsAdder custom block at all.
         set(
             14,
-            Icon.of(
-                box.blockMaterial, "<yellow>상자 블록</yellow>",
+            blockIcon(
+                box, "<yellow>상자 블록</yellow>",
                 buildList {
                     add("<gray>현재: <white>${box.block.serialize()}</white></gray>")
                     add("")

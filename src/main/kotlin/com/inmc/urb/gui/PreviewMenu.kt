@@ -57,8 +57,8 @@ class PreviewMenu(
 
         set(
             49,
-            Icon.of(
-                box.blockMaterial, box.displayName,
+            blockIcon(
+                box, box.displayName,
                 buildList {
                     addAll(box.lore)
                     if (box.lore.isNotEmpty()) add("")
@@ -123,8 +123,8 @@ class PreviewMenu(
             boxes.take(45).forEachIndexed { index, box ->
                 set(
                     index,
-                    Icon.of(
-                        box.blockMaterial, box.displayName,
+                    blockIcon(
+                        box, box.displayName,
                         buildList {
                             addAll(box.lore)
                             if (box.lore.isNotEmpty()) add("")
