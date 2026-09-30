@@ -316,15 +316,12 @@ class BoxOpenService(private val urb: Urb) {
         var keyTaken: ItemStack? = null
 
         if (key != null) {
-            // 옮기기 전의 옛 열쇠도 받는다(커스텀아이템 연동, [UrbRoles]).
-            val spec = if (urb.itemMatcher.findSlot(player, key) >= 0) key else box.keyLegacy ?: key
-            val slot = urb.itemMatcher.findSlot(player, spec)
-            if (slot < 0) {
+            // 옮기기 전의 옛 열쇠도 받는다(커스텀아이템 연동, [UrbRoles]). 가방 먼저, 없으면 배낭(core CarriedStorage — 2026-09-30).
+            keyTaken = urb.itemMatcher.takeOne(player, key) ?: box.keyLegacy?.let { urb.itemMatcher.takeOne(player, it) }
+            if (keyTaken == null) {
                 urb.messages.send(player, "key-required", Ph.of().box(box.displayName).key(key.label()))
                 return false
             }
-            keyTaken = player.inventory.getItem(slot)?.clone()?.also { it.amount = 1 }
-            if (!urb.itemMatcher.consumeOne(player, spec)) return false
         }
 
         if (box.moneyCost > 0.0) {
