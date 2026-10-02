@@ -124,6 +124,23 @@ class TrackingService(private val urb: Urb) {
         }
     }
 
+    /**
+     * 그 자리의 상자가 사라졌다(누가 열었다 · 시간이 다 됐다 · 지웠다) — 그 상자를 쫓던 사람의 추적을 멈춘다(테섭 2026-10-02).
+     * 연 사람 자신은 조용히 멈추고, 다른 사람에게는 [opener] 가 있으면 "누가 열었다", 없으면 "사라졌다".
+     */
+    fun boxGone(world: String, x: Int, z: Int, opener: Player?) {
+        if (targets.isEmpty()) return
+        for ((playerId, target) in targets.entries.toList()) {
+            if (target.world != world || target.x != x || target.z != z) continue
+            targets.remove(playerId)
+            urb.bossBars.hide(playerId, BossBars.TRACK)
+            if (playerId == opener?.uniqueId) continue
+            val player = Bukkit.getPlayer(playerId) ?: continue
+            if (opener != null) urb.messages.send(player, "track-opened", Ph.of().box(target.displayName).player(opener))
+            else urb.messages.send(player, "track-gone")
+        }
+    }
+
     /** Called on quit so a stale bar cannot follow the player into their next session. */
     fun forget(playerId: UUID) {
         targets.remove(playerId)

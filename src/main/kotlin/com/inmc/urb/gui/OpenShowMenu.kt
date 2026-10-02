@@ -22,6 +22,9 @@ import org.bukkit.inventory.ItemStack
  * Frames are chained one-shot `runTaskLater` calls rather than a repeating timer, so the
  * plugin keeps its single repeating task. [onFinish] is guaranteed to run exactly once: on the
  * last frame, on an early close, or on shutdown via the caller's pending-delivery registry.
+ *
+ * 소리(테섭 2026-10-02 "열 때마다 너무 시끄럽다 — 끄지 말고 좋게"): 바퀴 소리는 작게, 빠른 동안은 두 칸에 한 번, 느려질수록 낮아지게.
+ * 큰 것([jackpot] — 서버 공지가 걸린 보상)이 나오면 그때만 팡파르와 금색 테두리. 나머지 소리도 전보다 작게.
  */
 class OpenShowMenu(
     urb: Urb,
@@ -31,6 +34,8 @@ class OpenShowMenu(
     /** Everything the box can produce, used as the spinning strip. */
     private val pool: List<ItemStack>,
     private val animation: OpenAnimation,
+    /** 서버 공지가 걸린 보상이 나왔다 — 그때만 팡파르·금색 테두리. */
+    private val jackpot: Boolean,
     private val onFinish: () -> Unit,
 ) : Menu(urb, SIZE, title(box)) {
 
@@ -83,7 +88,11 @@ class OpenShowMenu(
 
         offset++
         drawStrip()
-        player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_HAT, 0.6f, 1.4f)
+        // 빠를 때(1틱 간격)는 두 칸에 한 번만 — 매 틱 울리면 기관총처럼 들린다. 느려질수록 소리도 낮아진다.
+        if (SPIN_DELAYS[step.coerceAtMost(SPIN_DELAYS.size - 1)] > 1 || step % 2 == 0) {
+            val pitch = 1.7f - 0.8f * step / (SPIN_DELAYS.size - 1)
+            player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_HAT, TICK_VOLUME, pitch)
+        }
 
         if (step >= SPIN_DELAYS.size - 1) {
             land(player)
@@ -97,7 +106,7 @@ class OpenShowMenu(
         if (finished) return
         val prize = prizes.firstOrNull()
         if (prize != null) inventory.setItem(CENTER, prize)
-        player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_BELL, 1.0f, 1.4f)
+        landSound(player)
 
         // The rest of the haul, if any, pops out one at a time below the winner.
         revealed = 1
@@ -115,7 +124,7 @@ class OpenShowMenu(
             return
         }
         inventory.setItem(EXTRA_SLOTS[revealed - 1], prizes[revealed])
-        player.playSound(player.location, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.0f + revealed * 0.1f)
+        player.playSound(player.location, Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.35f, 1.0f + revealed * 0.1f)
         revealed++
         later(REVEAL_GAP) { revealExtras(player) }
     }
@@ -129,6 +138,7 @@ class OpenShowMenu(
             return
         }
         if (revealed >= prizes.size) {
+            landSound(player)
             later(END_PAUSE) { finish(player) }
             return
         }
@@ -137,7 +147,7 @@ class OpenShowMenu(
         inventory.setItem(slot, prizes[revealed])
         // Pitch climbs with each item, so a big haul sounds like a build-up.
         val pitch = (1.0f + revealed * 0.12f).coerceAtMost(2.0f)
-        player.playSound(player.location, Sound.ENTITY_PLAYER_LEVELUP, 0.5f, pitch)
+        player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_PLING, 0.35f, pitch)
         revealed++
         later(REVEAL_GAP) { reveal(player) }
     }
@@ -150,6 +160,19 @@ class OpenShowMenu(
     }
 
     // --- shared ----------------------------------------------------------------
+
+    /** 멈춘 순간 — 보통은 맑은 종 한 번, 큰 것이면 팡파르와 금색 테두리. */
+    private fun landSound(player: Player) {
+        if (!jackpot) {
+            player.playSound(player.location, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.7f, 1.2f)
+            return
+        }
+        for (slot in 0 until SIZE) {
+            val current = inventory.getItem(slot)
+            if (current == null || current.isSimilar(Icon.EDGE)) inventory.setItem(slot, GOLD_EDGE)
+        }
+        player.playSound(player.location, Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.45f, 1.0f)
+    }
 
     private fun finish(player: Player) {
         if (finished) return
@@ -185,6 +208,11 @@ class OpenShowMenu(
         )
 
         private const val REVEAL_GAP = 6L
+
+        /** 바퀴 소리 크기 — 전에는 0.6 이라 귀에 박혔다. */
+        private const val TICK_VOLUME = 0.22f
+
+        private val GOLD_EDGE: ItemStack by lazy { Icon.blank(org.bukkit.Material.YELLOW_STAINED_GLASS_PANE) }
         private const val END_PAUSE = 25L
 
         private fun title(box: RandomBox) = Text.renderFlat(box.displayName)

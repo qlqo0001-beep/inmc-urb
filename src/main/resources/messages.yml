@@ -82,6 +82,9 @@ money-consumed: "<green>{필요한돈}원을 소모하여 {상자이름} 상자�
 economy-missing: "<red>경제 플러그인(Vault)이 없어 돈 조건을 처리할 수 없습니다.</red>"
 
 # --- 당첨 공지 ---------------------------------------------------------------
+# 본인에게 — 무엇을 얻었는지(잡템이어도). 창(GUI) 방식이면 창을 닫을 때 가방으로 들어간다는 것도
+reward-received: "<gray>{상자이름}</gray> <gray>»</gray> {아이템}"
+reward-received-window: "<gray>{상자이름}</gray> <gray>»</gray> {아이템} <dark_gray>(창을 닫으면 가방으로 들어갑니다)</dark_gray>"
 reward-announce: "<gold>★</gold> <yellow>{플레이어네임}</yellow>님이 <yellow>{상자이름}</yellow>에서 <aqua>{아이템}</aqua>을(를) 획득했습니다!"
 
 # --- 검색 / 추적 -------------------------------------------------------------
@@ -96,6 +99,7 @@ track-bossbar: "<yellow>{상자이름}</yellow> <gray>|</gray> <white>{거리}m<
 track-bossbar-away: "<yellow>{상자이름}</yellow> <gray>|</gray> <white>{world}</white> <gray>월드로 이동하세요</gray>"
 track-arrived: "<green>추적 중인 상자에 도착했습니다!</green>"
 track-gone: "<gray>그 상자는 이미 사라졌습니다.</gray>"
+track-opened: "<yellow>{플레이어} 님이 {상자이름} 상자를 열어 추적을 멈춥니다.</yellow>"
 
 preview-disabled: "<red>이 상자의 확률표는 공개되어 있지 않습니다.</red>"
 

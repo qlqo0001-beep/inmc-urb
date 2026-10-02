@@ -244,7 +244,7 @@ class BoxOpenService(private val urb: Urb) {
             spawned.opened = false
         } else {
             // A map-spawned box is gone once opened, whether or not the loot is taken (spec §72).
-            urb.spawns.remove(spawned, announce = false)
+            urb.spawns.remove(spawned, announce = false, opener = player)
         }
         deliver(player, box, at, announceOpen = box.broadcastOpen)
     }
@@ -399,7 +399,7 @@ class BoxOpenService(private val urb: Urb) {
             mapOf("box" to box.name, "rewards" to amounts.size.toString())
         }
 
-        present(player, box, items) {
+        present(player, box, items, jackpot = rolled.any { it.announce }) {
             handOver(player, box, at, items, rolled, commands, announceOpen)
         }
     }
@@ -433,6 +433,12 @@ class BoxOpenService(private val urb: Urb) {
                 OpenMode.DROP -> dropAt(at ?: player.location, items)
             }
             urb.visuals.playFlair(player, box.rewardFlair, at)
+            // 본인에게는 무엇을 얻었는지 늘 알린다(잡템이어도 — 서버 공지와 따로, 테섭 2026-10-02).
+            if (rolled.isNotEmpty()) {
+                val got = rolled.joinToString("<gray>, </gray>") { "<white>${it.label()}</white>" }
+                val key = if (box.effectiveOpenMode() == OpenMode.GUI) "reward-received-window" else "reward-received"
+                urb.messages.send(player, key, Ph.of().box(box.displayName).item(got))
+            }
         } else if (items.isNotEmpty()) {
             // Disconnected mid-animation: the loot was already theirs, so drop it where the
             // box stood rather than silently deleting it.
@@ -455,7 +461,7 @@ class BoxOpenService(private val urb: Urb) {
      * The callback is parked in [pendingDeliveries] for the duration so a shutdown, a reload or
      * a `/urb reset` can force it through - an animation must never be able to swallow loot.
      */
-    private fun present(player: Player, box: RandomBox, items: List<ItemStack>, then: () -> Unit) {
+    private fun present(player: Player, box: RandomBox, items: List<ItemStack>, jackpot: Boolean, then: () -> Unit) {
         if (box.openAnimation == OpenAnimation.NONE || items.isEmpty() || !player.isOnline) {
             then()
             return
@@ -471,7 +477,7 @@ class BoxOpenService(private val urb: Urb) {
         }
         pendingDeliveries[id] = guarded
 
-        OpenShowMenu(urb, box, items, spinPool(box, items), box.openAnimation, guarded).start(player)
+        OpenShowMenu(urb, box, items, spinPool(box, items), box.openAnimation, jackpot, guarded).start(player)
     }
 
     /** The strip the roulette scrolls: every reward the box can produce, deduplicated by icon. */
@@ -534,6 +540,8 @@ class BoxOpenService(private val urb: Urb) {
         if (body.isNotBlank()) {
             val prefix = urb.messages.raw(kr.inmc.core.config.MessageCatalog.PREFIX)
             for (viewer in Bukkit.getOnlinePlayers()) {
+                // 개인 설정 "희귀 드랍·당첨 공지 받기"를 끈 사람은 빼고 — 당첨된 본인은 늘 본다(core PlayerSettings).
+                if (viewer != player && !kr.inmc.core.integration.PlayerSettings.enabled(viewer, kr.inmc.core.integration.PlayerSettings.RARE_ANNOUNCE)) continue
                 viewer.sendMessage(Text.render(prefix + body, ph, viewer))
             }
         }

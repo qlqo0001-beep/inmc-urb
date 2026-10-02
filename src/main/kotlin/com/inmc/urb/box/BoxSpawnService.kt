@@ -348,9 +348,10 @@ class BoxSpawnService(private val urb: Urb) {
 
     // --- removal ---------------------------------------------------------------
 
-    /** Removes a box from the world, restoring whatever block it replaced. */
-    fun remove(spawned: SpawnedBox, announce: Boolean) {
+    /** Removes a box from the world, restoring whatever block it replaced. [opener] = 열어서 사라졌을 때 연 사람(추적하던 사람에게 알린다). */
+    fun remove(spawned: SpawnedBox, announce: Boolean, opener: org.bukkit.entity.Player? = null) {
         unindex(spawned)
+        urb.tracking.boxGone(spawned.key.world, spawned.key.x, spawned.key.z, opener)
         urb.visuals.onBoxRemoved(spawned.key)
         restoreBlock(spawned)
         if (announce) {
@@ -408,6 +409,7 @@ class BoxSpawnService(private val urb: Urb) {
     }
 
     fun removePending(pending: PendingSpawn, announce: Boolean) {
+        urb.tracking.boxGone(pending.world, pending.x, pending.z, null)
         pendingByChunk[pending.chunkKey]?.let { list ->
             list.remove(pending)
             if (list.isEmpty()) pendingByChunk.remove(pending.chunkKey)
