@@ -307,7 +307,8 @@ class RewardListMenu(
         val lore = mutableListOf(
             "<gray>확률: <yellow>${Numbers.chance(reward.chance)}%</yellow></gray>",
             "<gray>수량: <white>$amountText</white></gray>",
-            "<gray>저장 방식: <white>${if (reward.item.mode == StorageMode.REFERENCE) "참조 (자동 갱신)" else "스냅샷 (고정)"}</white></gray>",
+            // "동적/스냅샷"으로 부르는 사람이 많아 둘 다 적는다(테섭 2026-10-02 — 어디서 바꾸는지 못 찾았다).
+            "<gray>저장 방식: <white>${if (reward.item.mode == StorageMode.REFERENCE) "동적·참조 (원본을 고치면 따라감)" else "스냅샷 (등록한 그대로)"}</white> <dark_gray>— 상세 설정에서 바꿈</dark_gray></gray>",
             "<dark_gray>${reward.item.ref.serialize()}</dark_gray>",
         )
         reward.tier?.let { lore.add("<light_purple>티어: $it</light_purple>") }

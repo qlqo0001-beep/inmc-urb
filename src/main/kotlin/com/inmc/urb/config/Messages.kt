@@ -82,6 +82,8 @@ class Messages(values: Map<String, String>) : MessageCatalog<Ph>(values, DEFAULT
             "money-consumed" to "<green>{필요한돈}원을 소모하여 {상자이름} 상자를 엽니다!</green>",
             "economy-missing" to "<red>경제 플러그인(Vault)이 없어 돈 조건을 처리할 수 없습니다.</red>",
 
+            "reward-received" to "<gray>{상자이름}</gray> <gray>»</gray> {아이템}",
+            "reward-received-window" to "<gray>{상자이름}</gray> <gray>»</gray> {아이템} <dark_gray>(창을 닫으면 가방으로 들어갑니다)</dark_gray>",
             "reward-announce" to "<gold>★</gold> <yellow>{플레이어네임}</yellow>님이 <yellow>{상자이름}</yellow>에서 <aqua>{아이템}</aqua>을(를) 획득했습니다!",
 
             "search-cooldown" to "<red>{시간} 후에 다시 검색할 수 있습니다.</red>",
@@ -94,6 +96,7 @@ class Messages(values: Map<String, String>) : MessageCatalog<Ph>(values, DEFAULT
             "track-bossbar-away" to "<yellow>{상자이름}</yellow> <gray>|</gray> <white>{world}</white> <gray>월드로 이동하세요</gray>",
             "track-arrived" to "<green>추적 중인 상자에 도착했습니다!</green>",
             "track-gone" to "<gray>그 상자는 이미 사라졌습니다.</gray>",
+            "track-opened" to "<yellow>{플레이어} 님이 {상자이름} 상자를 열어 추적을 멈춥니다.</yellow>",
 
             "preview-disabled" to "<red>이 상자의 확률표는 공개되어 있지 않습니다.</red>",
 

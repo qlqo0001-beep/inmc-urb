@@ -151,7 +151,7 @@ class RewardDetailMenu(
             32,
             Icon.of(
                 if (reference) Material.RECOVERY_COMPASS else Material.BUNDLE,
-                if (reference) "<green>저장 방식: 참조 (자동 갱신)</green>" else "<yellow>저장 방식: 스냅샷 (고정)</yellow>",
+                if (reference) "<green>저장 방식: 동적·참조 (자동 갱신)</green>" else "<yellow>저장 방식: 스냅샷 (고정)</yellow>",
                 buildList {
                     add("<dark_gray>${reward.item.ref.serialize()}</dark_gray>")
                     add("")
