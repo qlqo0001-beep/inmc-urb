@@ -178,6 +178,7 @@ class ExtrasMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, title(box
                     "<gray>초기화: <white>${Durations.format(box.openLimitResetSeconds)}</white>마다</gray>"
                 else "<dark_gray>초기화 없음 - 평생 기준입니다.</dark_gray>",
                 "<dark_gray>고정 설치 상자를 반복해서 먹는 것을 막습니다.</dark_gray>",
+                "<dark_gray>고정 좌표 상자는 위치마다 따로 셉니다.</dark_gray>",
                 "",
                 "<yellow>▶ 좌클릭 +1 / 우클릭 -1 (Shift ±10)</yellow>",
                 "<red>▶ Shift+우클릭으로 0 까지 내리면 제한 해제</red>",

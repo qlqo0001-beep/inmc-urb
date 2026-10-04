@@ -28,19 +28,20 @@ class OpenRecords(private val urb: Urb) :
     private val records = ConcurrentHashMap<String, Record>()
 
 
-    private fun key(playerId: UUID, boxName: String) = "$playerId|$boxName"
+    private fun key(playerId: UUID, boxName: String, at: com.inmc.urb.util.BlockKey? = null) =
+        recordKey(playerId, boxName, at)
 
     /** Seconds left on this player's cooldown for the box, or null when they may open now. */
-    fun cooldownRemaining(playerId: UUID, box: RandomBox): Long? {
+    fun cooldownRemaining(playerId: UUID, box: RandomBox, at: com.inmc.urb.util.BlockKey? = null): Long? {
         if (box.perPlayerCooldownSeconds <= 0L) return null
-        val record = records[key(playerId, box.name)] ?: return null
+        val record = records[key(playerId, box.name, at)] ?: return null
         val elapsed = (System.currentTimeMillis() - record.lastOpenedAt) / 1000L
         if (elapsed >= box.perPlayerCooldownSeconds) return null
         return (box.perPlayerCooldownSeconds - elapsed).coerceAtLeast(1L)
     }
 
-    fun openCount(playerId: UUID, boxName: String): Int =
-        records[key(playerId, boxName)]?.count ?: 0
+    fun openCount(playerId: UUID, boxName: String, at: com.inmc.urb.util.BlockKey? = null): Int =
+        records[key(playerId, boxName, at)]?.count ?: 0
 
     /**
      * Opens the player has used in the period that is currently running.
@@ -49,30 +50,30 @@ class OpenRecords(private val urb: Urb) :
      * window has already elapsed reads as zero - the allowance has refilled, and the record is
      * only rewritten when they actually open something again.
      */
-    fun usedOpens(playerId: UUID, box: RandomBox): Int {
-        val record = records[key(playerId, box.name)] ?: return 0
+    fun usedOpens(playerId: UUID, box: RandomBox, at: com.inmc.urb.util.BlockKey? = null): Int {
+        val record = records[key(playerId, box.name, at)] ?: return 0
         if (isWindowExpired(record, box)) return 0
         return record.count
     }
 
     /** True when the player has used up their allowance for the current period. */
-    fun isExhausted(playerId: UUID, box: RandomBox): Boolean {
+    fun isExhausted(playerId: UUID, box: RandomBox, at: com.inmc.urb.util.BlockKey? = null): Boolean {
         if (box.maxOpensPerPlayer <= 0) return false
-        return usedOpens(playerId, box) >= box.maxOpensPerPlayer
+        return usedOpens(playerId, box, at) >= box.maxOpensPerPlayer
     }
 
-    fun remainingOpens(playerId: UUID, box: RandomBox): Int? {
+    fun remainingOpens(playerId: UUID, box: RandomBox, at: com.inmc.urb.util.BlockKey? = null): Int? {
         if (box.maxOpensPerPlayer <= 0) return null
-        return (box.maxOpensPerPlayer - usedOpens(playerId, box)).coerceAtLeast(0)
+        return (box.maxOpensPerPlayer - usedOpens(playerId, box, at)).coerceAtLeast(0)
     }
 
     /**
      * Seconds until this player's allowance refills, or null when it never does - either
      * because no reset is configured or because they have not started a period yet.
      */
-    fun resetIn(playerId: UUID, box: RandomBox): Long? {
+    fun resetIn(playerId: UUID, box: RandomBox, at: com.inmc.urb.util.BlockKey? = null): Long? {
         if (box.openLimitResetSeconds <= 0L || box.maxOpensPerPlayer <= 0) return null
-        val record = records[key(playerId, box.name)] ?: return null
+        val record = records[key(playerId, box.name, at)] ?: return null
         val start = record.periodStart()
         if (start <= 0L) return null
         val elapsed = (System.currentTimeMillis() - start) / 1000L
@@ -89,9 +90,9 @@ class OpenRecords(private val urb: Urb) :
      * Records one open. Takes the box rather than just its name so the period can roll over
      * here - doing it lazily on read would let a stale count survive a config change.
      */
-    fun record(playerId: UUID, box: RandomBox) {
+    fun record(playerId: UUID, box: RandomBox, at: com.inmc.urb.util.BlockKey? = null) {
         val now = System.currentTimeMillis()
-        records.compute(key(playerId, box.name)) { _, existing ->
+        records.compute(key(playerId, box.name, at)) { _, existing ->
             when {
                 existing == null -> Record(now, 1, now)
                 isWindowExpired(existing, box) -> {
@@ -114,8 +115,9 @@ class OpenRecords(private val urb: Urb) :
 
     /** Admin escape hatch: wipe history for one box, or everything when [boxName] is null. */
     fun reset(boxName: String?): Int {
+        // 위치별 기록 키(`$player|$box|world/x/y/z`)도 함께 지운다 — 끝이 box 이름인 것만 보면 남는다.
         val victims = if (boxName == null) records.keys.toList()
-        else records.keys.filter { it.endsWith("|$boxName") }
+        else records.keys.filter { it.endsWith("|$boxName") || it.contains("|$boxName|") }
         victims.forEach { records.remove(it) }
         if (victims.isNotEmpty()) markDirty()
         return victims.size
@@ -150,7 +152,30 @@ class OpenRecords(private val urb: Urb) :
         )
     }
 
+    /**
+     * 상자 단위 남은 횟수 합계(PAPI `remaining_<box>`). 고정 좌표 상자는 위치마다 따로 세므로
+     * 등록된 좌표들의 남은 횟수를 합친다. 랜덤 영역은 상자 단위 그대로다.
+     */
+    fun remainingOpensTotal(playerId: UUID, box: RandomBox): Int? {
+        if (box.maxOpensPerPlayer <= 0) return null
+        if (box.spawnMode == SpawnMode.RANDOM_AREA || box.fixedPoints.isEmpty()) {
+            return remainingOpens(playerId, box, null)
+        }
+        return box.fixedPoints.sumOf { remainingOpens(playerId, box, it) ?: 0 }
+    }
+
     companion object {
+        /**
+         * 기록 키 — 고정 좌표 상자는 위치마다 따로 센다(`$player|$box|world/x/y/z`).
+         * 같은 상자를 여러 곳에 깔아도 위치별로 1번씩 열리게 하려는 것이다(테섭 2026-10-04).
+         * 상자 단위 키(`$player|$box`)는 그대로라 옛 기록 파일도 그대로 읽힌다 — 고정 상자의
+         * 옛 상자 단위 기록은 위치 기록으로 다시 쌓인다(초기화 1회).
+         *
+         * 서버 없이 테스트한다.
+         */
+        internal fun recordKey(playerId: UUID, boxName: String, at: com.inmc.urb.util.BlockKey? = null): String =
+            if (at == null) "$playerId|$boxName" else "$playerId|$boxName|$at"
+
         /**
          * Whether an allowance period that opened at [start] has run out by [now].
          *

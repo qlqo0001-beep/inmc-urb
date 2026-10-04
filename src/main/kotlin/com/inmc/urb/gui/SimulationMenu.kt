@@ -237,7 +237,7 @@ class SimulationMenu(
             return Icon.of(
                 Material.GOLD_INGOT, "<yellow>비용 분석</yellow>",
                 "<gray>이 상자는 열쇠도 비용도 없습니다.</gray>",
-                if (box.isPermanent) "<red>고정 설치 상자는 반드시 비용이 필요합니다.</red>"
+                if (box.isPermanent) "<yellow>고정 설치 상자는 무료로 열립니다. 무제한 파밍 주의.</yellow>"
                 else "<dark_gray>무료로 열리는 상자입니다.</dark_gray>",
             )
         }

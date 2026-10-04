@@ -58,6 +58,10 @@ class BoxOpenService(private val urb: Urb) {
 
     // --- entry points ----------------------------------------------------------
 
+    /** 고정 좌표(FIXED_POINTS·PERMANENT) 상자의 블록 오픈은 위치마다 따로 센다. 랜덤 영역·캡슐·명령은 상자 단위. */
+    private fun scopeAt(box: RandomBox, key: com.inmc.urb.util.BlockKey): com.inmc.urb.util.BlockKey? =
+        if (box.spawnMode == SpawnMode.RANDOM_AREA) null else key
+
     /** Right-clicking a spawned box block. */
     fun beginBlockOpen(player: Player, spawned: SpawnedBox, box: RandomBox) {
         if (!box.enabled) {
@@ -72,11 +76,12 @@ class BoxOpenService(private val urb: Urb) {
             urb.messages.send(player, "open-busy")
             return
         }
+        val at = scopeAt(box, spawned.key)
         remainingCooldown(player, box)?.let { seconds ->
             urb.messages.send(player, "open-cooldown", Ph.of().time(Durations.formatShort(seconds)))
             return
         }
-        if (!checkConditions(player, box)) return
+        if (!checkConditions(player, box, at)) return
 
         if (box.openTimeSeconds <= 0) {
             spawned.opened = true
@@ -234,11 +239,12 @@ class BoxOpenService(private val urb: Urb) {
 
     private fun complete(player: Player, box: RandomBox, spawned: SpawnedBox) {
         // Re-check, because the world moved on while the bar was filling.
-        if (!checkConditions(player, box) || !consumeConditions(player, box)) {
+        val at = scopeAt(box, spawned.key)
+        if (!checkConditions(player, box, at) || !consumeConditions(player, box)) {
             spawned.opened = false
             return
         }
-        val at = spawned.key.toLocation(player.world)
+        val loc = spawned.key.toLocation(player.world)
         if (box.isPermanent) {
             // Furniture: it stays, and the per-player limits are what stop repeat looting.
             spawned.opened = false
@@ -246,31 +252,31 @@ class BoxOpenService(private val urb: Urb) {
             // A map-spawned box is gone once opened, whether or not the loot is taken (spec §72).
             urb.spawns.remove(spawned, announce = false, opener = player)
         }
-        deliver(player, box, at, announceOpen = box.broadcastOpen)
+        deliver(player, box, loc, announceOpen = box.broadcastOpen, scope = at)
     }
 
     // --- conditions ------------------------------------------------------------
 
     /** Checks without consuming. Sends the reason to the player when it fails. */
-    fun checkConditions(player: Player, box: RandomBox): Boolean {
-        // A permanent box has no despawn and no respawn, so its only brake is its cost. With
-        // neither a key nor a price it would be an unlimited item faucet - refuse instead.
-        if (box.isPermanent && !box.permanentHasCost()) {
-            urb.messages.send(player, "permanent-no-cost", Ph.of().box(box.displayName))
-            return false
-        }
-        if (urb.openRecords.isExhausted(player.uniqueId, box)) {
-            val ph = Ph.of().box(box.displayName).count(box.maxOpensPerPlayer)
-            // A cap that refills is worth saying so - "최대 3번" alone reads as permanent.
-            val resetIn = urb.openRecords.resetIn(player.uniqueId, box)
-            if (resetIn != null) {
-                urb.messages.send(player, "open-limit-reached-timed", ph.time(Durations.formatShort(resetIn)))
+    fun checkConditions(player: Player, box: RandomBox, at: com.inmc.urb.util.BlockKey? = null): Boolean {
+        // 열쇠·비용이 없어도 무료 오픈 상자로 열린다(테섭 2026-10-04). 1인 제한이 따로 걸려 있으면
+        // 그쪽이 막는다 — 무제한 무료 고정 상자를 깔면 아이템 수도꼭지가 되니 주의.
+        if (urb.openRecords.isExhausted(player.uniqueId, box, at)) {
+            if (box.maxOpensPerPlayer == 1 && box.openLimitResetSeconds <= 0L) {
+                urb.messages.send(player, "open-already-found", Ph.of().box(box.displayName))
             } else {
-                urb.messages.send(player, "open-limit-reached", ph)
+                val ph = Ph.of().box(box.displayName).count(box.maxOpensPerPlayer)
+                // A cap that refills is worth saying so - "최대 3번" alone reads as permanent.
+                val resetIn = urb.openRecords.resetIn(player.uniqueId, box, at)
+                if (resetIn != null) {
+                    urb.messages.send(player, "open-limit-reached-timed", ph.time(Durations.formatShort(resetIn)))
+                } else {
+                    urb.messages.send(player, "open-limit-reached", ph)
+                }
             }
             return false
         }
-        urb.openRecords.cooldownRemaining(player.uniqueId, box)?.let { seconds ->
+        urb.openRecords.cooldownRemaining(player.uniqueId, box, at)?.let { seconds ->
             urb.messages.send(
                 player, "open-personal-cooldown",
                 Ph.of().box(box.displayName).time(Durations.formatShort(seconds)),
@@ -359,7 +365,13 @@ class BoxOpenService(private val urb: Urb) {
      * the reveal window, the flourish, the commands, the broadcast - works from an already
      * decided result, so nothing a player does mid-animation can change what they get.
      */
-    fun deliver(player: Player, box: RandomBox, at: Location?, announceOpen: Boolean) {
+    fun deliver(
+        player: Player,
+        box: RandomBox,
+        at: Location?,
+        announceOpen: Boolean,
+        scope: com.inmc.urb.util.BlockKey? = null,
+    ) {
         if (box.rewards.isEmpty()) {
             urb.messages.send(player, "box-no-rewards", Ph.of().box(box.displayName))
             return
@@ -384,7 +396,7 @@ class BoxOpenService(private val urb: Urb) {
             commands.addAll(reward.commands)
         }
 
-        urb.openRecords.record(player.uniqueId, box)
+        urb.openRecords.record(player.uniqueId, box, scope)
         urb.stats.record(player, box, amounts, at)
 
         // "이 사람이 이 상자를 열었다" 를 core 의 신호로 알린다. 듣는 쪽이 하나도 없으면

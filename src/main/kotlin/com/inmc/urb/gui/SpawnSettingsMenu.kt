@@ -49,11 +49,12 @@ class SpawnSettingsMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, ti
                     add("<dark_gray>랜덤 영역: 지정한 영역 안 아무 곳</dark_gray>")
                     add("<dark_gray>특정 좌표: 등록된 좌표 중 하나</dark_gray>")
                     add("<dark_gray>고정 설치: 등록된 모든 좌표에 영구 설치.</dark_gray>")
-                    add("<dark_gray>          소멸하지 않고, 열쇠나 돈이 있어야만 열립니다.</dark_gray>")
+                    add("<dark_gray>          소멸하지 않고, 열쇠·비용이 없으면 무료로 열립니다.</dark_gray>")
+                    add("<dark_gray>          무제한 무료 상자는 아이템 수도꼭지가 되니 1인 제한을 거세요.</dark_gray>")
                     if (box.isPermanent && !box.permanentHasCost()) {
                         add("")
-                        add("<red>⚠ 열쇠나 소모 금액이 없어 열 수 없습니다.</red>")
-                        add("<red>   '오픈 조건' 에서 하나 이상 설정하세요.</red>")
+                        add("<yellow>⚠ 열쇠·소모 금액이 없어 무료 오픈 상자입니다.</yellow>")
+                        add("<yellow>   1인 제한이 없으면 무제한으로 열립니다.</yellow>")
                     }
                     add("")
                     add("<yellow>▶ 좌클릭: 다음 방식  /  우클릭: 이전 방식</yellow>")
