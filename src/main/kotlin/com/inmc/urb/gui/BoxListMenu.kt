@@ -96,6 +96,14 @@ class BoxListMenu(urb: Urb, private var page: Int = 0) : Menu(urb, SIZE, TITLE) 
 
         set(50, Icon.close()) { event -> (event.whoClicked as? Player)?.closeInventory() }
 
+        set(
+            53,
+            Icon.of(
+                Material.COMPASS, "<gold>어드민 메뉴로</gold>",
+                "<gray>각 플러그인 설정 허브로 돌아갑니다.</gray>",
+            )
+        ) { event -> (event.whoClicked as? Player)?.performCommand("메뉴 어드민") }
+
         if (boxes.isEmpty()) {
             set(
                 22,

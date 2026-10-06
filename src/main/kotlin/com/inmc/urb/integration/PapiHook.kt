@@ -89,10 +89,11 @@ private class UrbExpansion(private val urb: Urb) : PlaceholderExpansion() {
                 online?.let { urb.stats.rankOf(it.uniqueId)?.toString() } ?: "-"
 
             // Lifetime allowance left for *this* player on that box; "-" when uncapped.
+            // 고정 좌표 상자는 위치마다 따로 세므로 합계를 보여준다.
             params.startsWith("remaining_", true) -> {
                 val box = urb.boxes.get(resolveName(params.substring("remaining_".length)))
                 if (box == null || online == null) "-"
-                else urb.openRecords.remainingOpens(online.uniqueId, box)?.toString() ?: "-"
+                else urb.openRecords.remainingOpensTotal(online.uniqueId, box)?.toString() ?: "-"
             }
 
             params.startsWith("top_name_", true) ->

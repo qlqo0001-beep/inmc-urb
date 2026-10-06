@@ -117,6 +117,31 @@ class OpenLimitTest {
         assertNull(box.autoSpawnProblem())
     }
 
+    // --- per-location record keys ------------------------------------------------
+
+    @Test
+    fun `box scoped key has two segments`() {
+        val id = java.util.UUID.randomUUID()
+        assertEquals("$id|gift", OpenRecords.recordKey(id, "gift", null))
+    }
+
+    @Test
+    fun `location scoped key carries world and xyz`() {
+        val id = java.util.UUID.randomUUID()
+        val at = BlockKey("world", 10, 64, -5)
+        assertEquals("$id|gift|world/10/64/-5", OpenRecords.recordKey(id, "gift", at))
+    }
+
+    @Test
+    fun `different locations scope different records`() {
+        val id = java.util.UUID.randomUUID()
+        val a = OpenRecords.recordKey(id, "gift", BlockKey("world", 0, 64, 0))
+        val b = OpenRecords.recordKey(id, "gift", BlockKey("world", 1, 64, 0))
+        assertTrue(a != b)
+        // 상자 단위 키와도 겹치지 않는다 — 옛 기록이 새 기록에 섞이지 않는다.
+        assertTrue(OpenRecords.recordKey(id, "gift", null) != a)
+    }
+
     @Test
     fun `a zero interval is reported for a spawning box`() {
         val box = box {

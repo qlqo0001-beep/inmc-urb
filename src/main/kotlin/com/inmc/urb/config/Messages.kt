@@ -74,6 +74,7 @@ class Messages(values: Map<String, String>) : MessageCatalog<Ph>(values, DEFAULT
             "open-personal-cooldown" to "<red>{상자이름} 상자는 {시간} 후에 다시 열 수 있습니다.</red>",
             "open-limit-reached" to "<red>{상자이름} 상자는 최대 {개수}번까지만 열 수 있습니다.</red>",
             "open-limit-reached-timed" to "<red>{상자이름} 상자는 {개수}번까지 열 수 있습니다. <yellow>{시간}</yellow> 후에 초기화됩니다.</red>",
+            "open-already-found" to "<gray>{상자이름}은(는) 이미 찾은 상자입니다.</gray>",
             "permanent-no-cost" to "<red>{상자이름} 상자는 열쇠나 비용이 설정되어 있지 않아 열 수 없습니다.</red>",
 
             "key-required" to "<red>{상자이름} 상자를 여시려면 {열쇠이름} 이(가) 필요합니다.</red>",
