@@ -120,6 +120,9 @@ class Urb(override val plugin: JavaPlugin) : InmcHost {
                                 ready = true
                                 // Permanent installations re-assert themselves on every boot.
                                 boxes.all().forEach { spawns.ensurePermanent(it) }
+                                // 종료 정리를 못 한 채 켜졌으면(크래시) 남아 있던 비고정 상자를 추적해 지운다.
+                                // 깨끗한 종료 뒤에는 지울 것이 없어 조용하다. 메인 스레드 1회.
+                                spawns.sweepStaleBoxes()
                                 then()
                             }
                         }
@@ -208,10 +211,9 @@ class Urb(override val plugin: JavaPlugin) : InmcHost {
         stats.flushBlocking()
         visuals.removeAll()
         bossBars.clear()
-        if (config.cleanupAllOnShutdown) {
-            logger.info("shutdown.cleanup-all 활성화 - 생성된 상자를 모두 제거합니다")
-            spawns.removeAllForShutdown()
-        }
+        // 고정 설치 빼고 전부 치운다 — 놓인 것(원래 블록 복원)과 대기열. `cleanup-all` 이
+        // 켜져 있으면 고정 설치까지 치운다.
+        spawns.removeAllForShutdown(includePermanent = config.cleanupAllOnShutdown)
         spawns.flushStateBlocking()
         io.shutdown()
     }

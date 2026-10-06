@@ -67,8 +67,6 @@ class BoxSpawnService(private val urb: Urb) {
     data class RestoreEntry(
         val key: BlockKey,
         val blockData: String,
-        /** Material to overwrite; null means restore unconditionally. */
-        val boxMaterial: Material?,
         /**
          * Needed so a custom block can be de-registered with its owning plugin.
          *
@@ -359,43 +357,39 @@ class BoxSpawnService(private val urb: Urb) {
         }
     }
 
-    /**
-     * The material the restore is allowed to overwrite.
-     *
-     * Prefers what was recorded at placement. Falls back to the box's configured block only
-     * for state entries written before that was recorded, so upgrading cannot change how an
-     * already-standing box behaves.
-     */
-    private fun expectedMaterial(spawned: SpawnedBox): Material? =
-        spawned.placedMaterial ?: urb.boxes.get(spawned.boxName)?.blockMaterial
-
     private fun restoreBlock(spawned: SpawnedBox) {
-        val world = Bukkit.getWorld(spawned.key.world)
-        if (world == null) return
         val box = urb.boxes.get(spawned.boxName)
-        val expected = expectedMaterial(spawned)
-
-        if (!world.isChunkLoaded(spawned.key.x shr 4, spawned.key.z shr 4)) {
-            // Never force-load just to tidy up; do it when the chunk next comes in.
+        val world = Bukkit.getWorld(spawned.key.world)
+        if (world == null) {
+            // 멀티버스 월드가 아직 없어도 항목은 남긴다. 버리면 영구 고아다.
             restoreByChunk.computeIfAbsent(spawned.chunkKey) { synchronizedList() }.add(
-                RestoreEntry(spawned.key, spawned.originalBlockData, expected, box?.block)
+                RestoreEntry(spawned.key, spawned.originalBlockData, box?.block)
             )
             stateDirty = true
             return
         }
-        applyRestore(world, spawned.key, spawned.originalBlockData, expected, box?.block)
+
+        if (!world.isChunkLoaded(spawned.key.x shr 4, spawned.key.z shr 4)) {
+            // Never force-load just to tidy up; do it when the chunk next comes in.
+            restoreByChunk.computeIfAbsent(spawned.chunkKey) { synchronizedList() }.add(
+                RestoreEntry(spawned.key, spawned.originalBlockData, box?.block)
+            )
+            stateDirty = true
+            return
+        }
+        applyRestore(world, spawned.key, spawned.originalBlockData, box?.block)
     }
 
     private fun applyRestore(
         world: World,
         key: BlockKey,
         blockData: String,
-        expected: Material?,
         ref: kr.inmc.core.item.BlockRef? = null,
     ) {
+        // 추적 중인 상자 자리라 보고 무조건 되돌린다. 타입 검사를 하면 커스텀 블록이
+        // 재시작 뒤에 다른 모습으로 읽혀 영원히 남는다 — 그 고아가 쌓여서 검사를 뺐다.
+        // 상자 자리는 보호되어 손으로 바꿀 수 없으니 덮어써도 된다.
         val block = world.getBlockAt(key.x, key.y, key.z)
-        // Someone may have replaced the block by hand or with WorldEdit - leave that alone.
-        if (expected != null && block.type != expected) return
 
         // A custom block keeps state in its owning plugin; clearing that first stops
         // ItemsAdder from leaving an invisible entry behind after we overwrite the block.
@@ -543,12 +537,23 @@ class BoxSpawnService(private val urb: Urb) {
         val key = chunk.chunkKey
 
         restoreByChunk.remove(key)?.let { entries ->
-            entries.forEach { applyRestore(chunk.world, it.key, it.blockData, it.boxMaterial, it.boxRef) }
+            // chunkKey 에는 월드가 없으므로 다른 월드 항목이 섞여 있을 수 있다 — 그쪽은 둔다.
+            val (mine, others) = entries.partition { it.key.world == chunk.world.name }
+            if (others.isNotEmpty()) {
+                restoreByChunk.computeIfAbsent(key) { synchronizedList() }.addAll(others)
+            }
+            mine.forEach { applyRestore(chunk.world, it.key, it.blockData, it.boxRef) }
             stateDirty = true
         }
 
         val waiting = pendingByChunk.remove(key) ?: return
-        for (pending in waiting.toList()) {
+        // 복원과 같은 이유로 다른 월드 것은 둔다.
+        val (mine, others) = waiting.partition { it.world == chunk.world.name }
+        if (others.isNotEmpty()) {
+            pendingByChunk.computeIfAbsent(key) { synchronizedList() }.addAll(others)
+        }
+        if (mine.isEmpty()) return
+        for (pending in mine) {
             pendingByBox[pending.boxName]?.remove(pending)
             stateDirty = true
 
@@ -694,7 +699,6 @@ class BoxSpawnService(private val urb: Urb) {
             mapOf(
                 "at" to entry.key.toString(),
                 "data" to entry.blockData,
-                "material" to entry.boxMaterial?.name,
                 "ref" to entry.boxRef?.serialize(),
             )
         })
@@ -744,10 +748,9 @@ class BoxSpawnService(private val urb: Urb) {
 
             for (entry in config.getMapList("restore")) {
                 val key = BlockKey.parse(entry["at"] as? String ?: continue) ?: continue
-                val material = (entry["material"] as? String)?.let { Material.matchMaterial(it) }
                 val ref = (entry["ref"] as? String)?.let { kr.inmc.core.item.BlockRef.parse(it) }
                 restoreByChunk.computeIfAbsent(key.chunkKey) { synchronizedList() }
-                    .add(RestoreEntry(key, entry["data"] as? String ?: "minecraft:air", material, ref))
+                    .add(RestoreEntry(key, entry["data"] as? String ?: "minecraft:air", ref))
             }
 
             urb.logger.info("상자 상태 복원 완료 - 배치 ${byBlock.size}개, 대기 ${totalPending()}개")
@@ -756,31 +759,86 @@ class BoxSpawnService(private val urb: Urb) {
         }
     }
 
-    /** Restores every box immediately; only used when `shutdown.cleanup-all` is on. */
-    fun removeAllForShutdown() {
-        var deferred = 0
+    /**
+     * 종료 때 비운다. 고정 설치(PERMANENT)는 남기고 전부 — 놓인 것(원래 블록으로 되돌림)과
+     * 아직 안 놓인 대기열이다. 고정 설치는 켤 때 `ensurePermanent` 가 다시 세운다.
+     *
+     * 꺼질 때 치우면 "꺼져 있는 동안 만료된 상자" 가 생기지 않는다. 청크가 내려가 있어
+     * 못 되돌린 것은 복원 항목으로 남기고, 켜질 때 기동 정리가 지운다. 강제 로드는
+     * 종료 때도 하지 않는다.
+     */
+    fun removeAllForShutdown(includePermanent: Boolean) {
+        var swept = 0
+        var dropped = 0
         for (spawned in byBlock.values.toList()) {
-            val world = Bukkit.getWorld(spawned.key.world) ?: continue
-            val material = expectedMaterial(spawned)
-            val ref = urb.boxes.get(spawned.boxName)?.block
-            if (world.isChunkLoaded(spawned.key.x shr 4, spawned.key.z shr 4)) {
-                applyRestore(world, spawned.key, spawned.originalBlockData, material, ref)
-            } else {
-                // Still no force-loading, even on shutdown. Keep the restore so the block is
-                // put back the next time that chunk loads instead of being orphaned.
-                restoreByChunk.computeIfAbsent(spawned.chunkKey) { synchronizedList() }.add(
-                    RestoreEntry(spawned.key, spawned.originalBlockData, material, ref)
-                )
-                deferred++
+            if (!includePermanent && isPermanent(spawned)) continue
+            remove(spawned, announce = false)
+            swept++
+        }
+        for (list in pendingByChunk.values.toList()) {
+            for (pending in list.toList()) {
+                if (!includePermanent && isPermanentPending(pending)) continue
+                removePending(pending, announce = false)
+                dropped++
             }
         }
-        byBlock.clear(); byChunk.clear(); byBox.clear()
-        pendingByChunk.clear(); pendingByBox.clear()
-        if (deferred > 0) {
-            urb.logger.info("청크가 로드되지 않은 상자 ${deferred}개는 다음 청크 로드 시 복원됩니다")
+        if (swept > 0 || dropped > 0) {
+            urb.logger.info("종료 정리 - 상자 ${swept}개 복원, 대기 ${dropped}개 파기")
         }
-        stateDirty = true
     }
+
+    /**
+     * 켜질 때 남아 있던 비고정 상자를 추적해서 지운다. 깨끗한 종료 뒤에는 지울 것이 없고,
+     * 크래시처럼 종료 정리를 못 한 경우에만 동작한다 — 그래서 평상시 기동은 조용하다.
+     *
+     * 놓인 것은 `remove` 로 치우고(내려간 청크는 복원 항목으로), 대기열은 파기하고,
+     * 로드된 청크의 복원 항목은 그 자리에서 적용한다. 강제 로드는 여기서도 하지 않는다.
+     * 고정 설치는 손대지 않는다. 메인 스레드에서 1회.
+     */
+    fun sweepStaleBoxes() {
+        var swept = 0
+        var dropped = 0
+        var restored = 0
+        for (spawned in byBlock.values.toList()) {
+            if (isPermanent(spawned)) continue
+            remove(spawned, announce = false)
+            swept++
+        }
+        for (list in pendingByChunk.values.toList()) {
+            for (pending in list.toList()) {
+                if (isPermanentPending(pending)) continue
+                removePending(pending, announce = false)
+                dropped++
+            }
+        }
+        for (chunkKey in restoreByChunk.keys.toList()) {
+            val list = restoreByChunk[chunkKey] ?: continue
+            // chunkKey 에는 월드가 없으므로 항목에서 월드를 찾는다. 섞인 다른 월드는 둔다.
+            val worlds = list.map { it.key.world }.toSet()
+            for (worldName in worlds) {
+                val world = Bukkit.getWorld(worldName) ?: continue
+                val x = (chunkKey and 0xffffffffL).toInt()
+                val z = (chunkKey ushr 32).toInt()
+                if (!world.isChunkLoaded(x, z)) continue
+                val mine = list.filter { it.key.world == worldName }
+                list.removeAll(mine.toSet())
+                if (list.isEmpty()) restoreByChunk.remove(chunkKey)
+                mine.forEach { applyRestore(world, it.key, it.blockData, it.boxRef) }
+                restored += mine.size
+                stateDirty = true
+            }
+        }
+        if (swept > 0 || dropped > 0 || restored > 0) {
+            urb.logger.info("기동 정리 완료 - 상자 ${swept}개 복원, 대기 ${dropped}개 파기, 연기 복원 ${restored}개 적용")
+        }
+    }
+
+    /** 정의가 지워진 상자의 잔재도 비고정으로 다룬다 — 남겨둘 이유가 없다. */
+    private fun isPermanent(spawned: SpawnedBox): Boolean =
+        urb.boxes.get(spawned.boxName)?.isPermanent == true
+
+    private fun isPermanentPending(pending: PendingSpawn): Boolean =
+        urb.boxes.get(pending.boxName)?.isPermanent == true
 
     private fun <T> synchronizedList(): MutableList<T> = Collections.synchronizedList(ArrayList())
 }
