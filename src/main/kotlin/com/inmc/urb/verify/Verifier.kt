@@ -12,7 +12,6 @@ import org.bukkit.Material
 import org.bukkit.entity.Player
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import kotlin.random.Random
 
 /**
  * `/urb verify` — 서버 안에서 상자 정의·추첨기·조건·소환·홀로그램·진입점을 실제로 돌려 확인한다(드랍·상점 검증기와 같은 틀, 2026-10-08).
@@ -95,7 +94,7 @@ class Verifier(private val urb: Urb) {
             },
             Check("추첨기 — 뽑는 개수가 최소~최대(보상 수 한도) 안이다") { s ->
                 val box = s.box()?.takeIf { it.rewards.isNotEmpty() } ?: return@Check "$SKIP 보상이 있는 상자가 없습니다"
-                val rng = Random(1)
+                val rng = java.util.Random(1)
                 val lo = minOf(box.minRolls, box.rewards.size)
                 val hi = maxOf(lo, minOf(box.maxRolls, box.rewards.size))
                 repeat(200) {
