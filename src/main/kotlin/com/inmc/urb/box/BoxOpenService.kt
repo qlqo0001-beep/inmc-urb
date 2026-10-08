@@ -303,12 +303,12 @@ class BoxOpenService(private val urb: Urb) {
                 urb.messages.send(player, "economy-missing")
                 return false
             }
-            if (!urb.economy.has(player, box.moneyCost)) {
+            if (!urb.economy.has(player, box.moneyCost, box.currency)) {
                 urb.messages.send(
                     player, "money-required",
                     Ph.of().box(box.displayName)
                         .money(Numbers.money(box.moneyCost))
-                        .balance(Numbers.money(urb.economy.balance(player))),
+                        .balance(Numbers.money(urb.economy.balance(player, box.currency))),
                 )
                 return false
             }
@@ -331,13 +331,13 @@ class BoxOpenService(private val urb: Urb) {
         }
 
         if (box.moneyCost > 0.0) {
-            if (!urb.economy.withdraw(player, box.moneyCost)) {
+            if (!urb.economy.withdraw(player, box.moneyCost, box.currency)) {
                 keyTaken?.let { player.inventory.addItem(it) }
                 urb.messages.send(
                     player, "money-required",
                     Ph.of().box(box.displayName)
                         .money(Numbers.money(box.moneyCost))
-                        .balance(Numbers.money(urb.economy.balance(player))),
+                        .balance(Numbers.money(urb.economy.balance(player, box.currency))),
                 )
                 return false
             }

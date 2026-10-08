@@ -12,7 +12,7 @@ import org.bukkit.Particle
 import org.bukkit.entity.Display
 import org.bukkit.entity.Player
 import org.bukkit.entity.TextDisplay
-import java.util.UUID
+import org.bukkit.persistence.PersistentDataType
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
 
@@ -23,11 +23,16 @@ import kotlin.math.roundToInt
  * **non-persistent** [TextDisplay] entities: they are never written to the region files, so a
  * crash cannot leave orphans lying around, and this class simply re-creates any that went away
  * with their chunk.
+ *
+ * **홀로그램은 엔티티 객체를 직접 든다**(2026-10-08 고침). 예전에는 uuid 로 다시 찾았는데(`Bukkit.getEntity`), Paper 는 접근 불가
+ * 상태인 청크의 엔티티를 없다고 답한다(moonrise `EntityLookup.maskNonAccessible`). 그때 만들기는 하나를 더 만들고 옛것을 잊었고,
+ * 지우기는 맵에서만 뺐다 — 놓친 홀로그램이 글자가 멈춘 채 상자 없이 남았다(테섭, 강제 종료 뒤 · 시야 끝 청크). 그래서 우리 홀로그램에
+ * 표시([TAG] = 상자 자리)를 달고, 만들거나 지울 때 그 자리의 표시 달린 것을 전부 치운다.
  */
 class BoxVisuals(private val urb: Urb) {
 
     /** Box position -> its hologram entity. */
-    private val holograms = ConcurrentHashMap<BlockKey, UUID>()
+    private val holograms = ConcurrentHashMap<BlockKey, TextDisplay>()
 
     /**
      * One pass over every placed box: emit particles and keep the hologram in sync.
@@ -43,6 +48,7 @@ class BoxVisuals(private val urb: Urb) {
             if (!world.isChunkLoaded(spawned.key.x shr 4, spawned.key.z shr 4)) continue
 
             val center = spawned.key.toLocation(world).add(0.5, 0.0, 0.5)
+            val accessible = world.getChunkAt(spawned.key.x shr 4, spawned.key.z shr 4).loadLevel in ACCESSIBLE
 
             if (box.particlePreset != ParticlePreset.NONE && world.players.isNotEmpty()) {
                 runCatching { box.particlePreset.emit(world, center) }
@@ -57,7 +63,7 @@ class BoxVisuals(private val urb: Urb) {
 
             if (box.hologramEnabled) {
                 alive.add(spawned.key)
-                updateHologram(spawned, box.displayName, center, now)
+                updateHologram(spawned, box.displayName, center, now, accessible)
             }
         }
 
@@ -68,9 +74,9 @@ class BoxVisuals(private val urb: Urb) {
         }
     }
 
-    private fun updateHologram(spawned: SpawnedBox, displayName: String, center: Location, now: Long) {
+    private fun updateHologram(spawned: SpawnedBox, displayName: String, center: Location, now: Long, accessible: Boolean) {
         val world = center.world ?: return
-        val existing = holograms[spawned.key]?.let { Bukkit.getEntity(it) as? TextDisplay }
+        val existing = holograms[spawned.key]
 
         val remaining = spawned.remainingSeconds(now)
         val text = buildString {
@@ -86,8 +92,14 @@ class BoxVisuals(private val urb: Urb) {
             existing.text(component)
             return
         }
+        // 접근 불가 청크에는 새로 만들지 않는다 — 거기 든 것은 찾을 수 없어 겹쳐 쌓인다. 올라오면 그때 만든다.
+        if (!accessible) return
 
-        val display = world.spawn(center.clone().add(0.0, 1.3, 0.0), TextDisplay::class.java) { entity ->
+        val spot = center.clone().add(0.0, 1.3, 0.0)
+        existing?.remove()
+        clearTagged(spot, spawned.key)
+        val display = world.spawn(spot, TextDisplay::class.java) { entity ->
+            entity.persistentDataContainer.set(TAG, PersistentDataType.STRING, spawned.key.toString())
             entity.text(component)
             entity.billboard = Display.Billboard.CENTER
             entity.isDefaultBackground = false
@@ -97,12 +109,41 @@ class BoxVisuals(private val urb: Urb) {
             entity.isSilent = true
             entity.viewRange = 0.6f
         }
-        holograms[spawned.key] = display.uniqueId
+        holograms[spawned.key] = display
     }
 
     private fun removeHologram(key: BlockKey) {
-        val id = holograms.remove(key) ?: return
-        (Bukkit.getEntity(id))?.remove()
+        holograms.remove(key)?.remove()
+        val world = Bukkit.getWorld(key.world) ?: return
+        if (!world.isChunkLoaded(key.x shr 4, key.z shr 4)) return
+        clearTagged(key.toLocation(world).add(0.5, 1.3, 0.5), key)
+    }
+
+    /** 그 상자 자리에 표시 달린 우리 홀로그램을 모두 치운다 — 놓쳤던 것까지. 이 상자 것만([TAG] 값이 자리). */
+    private fun clearTagged(spot: Location, key: BlockKey) {
+        val world = spot.world ?: return
+        val mark = key.toString()
+        for (entity in world.getNearbyEntitiesByType(TextDisplay::class.java, spot, 1.0)) {
+            if (entity.persistentDataContainer.get(TAG, PersistentDataType.STRING) == mark) entity.remove()
+        }
+    }
+
+    /**
+     * 지금 올라와 있는 청크에서 추적하지 않는 우리 홀로그램을 치운다(`/urb 정리`). 표시가 없는 예전 것은 서버를 다시 켜면 사라진다(저장 안 됨).
+     * @return 치운 수
+     */
+    fun sweepStray(): Int {
+        val tracked = holograms.values.toSet()
+        var removed = 0
+        for (world in Bukkit.getWorlds()) {
+            for (entity in world.getEntitiesByClass(TextDisplay::class.java)) {
+                if (!entity.persistentDataContainer.has(TAG, PersistentDataType.STRING)) continue
+                if (entity in tracked) continue
+                entity.remove()
+                removed++
+            }
+        }
+        return removed
     }
 
     /** Called when a box is removed so its hologram goes at the same moment the block does. */
@@ -247,6 +288,12 @@ class BoxVisuals(private val urb: Urb) {
     fun placeholders(displayName: String): Ph = Ph.of().box(displayName)
 
     companion object {
+        /** 우리 홀로그램 표시 — 값은 상자 자리(`world/x/y/z`). ARCHITECTURE PDC 표의 `inmcurb`. */
+        val TAG = org.bukkit.NamespacedKey("inmcurb", "hologram")
+
+        /** 엔티티를 찾을 수 있는 청크 상태(Paper `maskNonAccessible` 이 숨기지 않는 것). */
+        private val ACCESSIBLE = setOf(org.bukkit.Chunk.LoadLevel.BORDER, org.bukkit.Chunk.LoadLevel.TICKING, org.bukkit.Chunk.LoadLevel.ENTITY_TICKING)
+
         private const val TRAIL_STEPS = 12
         private const val TRAIL_SPACING = 1.2
         private const val BEACON_RANGE = 48

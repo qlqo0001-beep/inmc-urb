@@ -18,6 +18,11 @@ usage: "<gray>/urb <white>[create|copy|remove|spawn|spawnnow|open|reset|simulate
 usage-player: "<gray>사용 가능: <white>/urb info</white>, <white>/urb search</white>, <white>/urb notice</white>, <white>/urb ranking</white></gray>"
 reloading: "<gray>설정을 다시 읽는 중...</gray>"
 reloaded: "<green>설정을 다시 읽었습니다. (상자 {개수}개)</green>"
+verify-done: "<gold>상자 검증</gold> <gray>— 통과 <green>{수량}</green> · 실패 <red>{개수}</red>{아이템}</gray>"
+verify-failure: "<red> ✘ {아이템}</red>"
+verify-skipped: "<gray> – {아이템}</gray>"
+verify-report: "<gray>결과 파일: <white>{아이템}</white></gray>"
+holograms-swept: "<green>상자 없이 떠 있던 홀로그램 {개수}개를 치웠습니다.</green>"
 reload-menu-closed: "<gray>설정을 다시 읽어 열려 있던 창을 닫았습니다. 다시 열어주세요.</gray>"
 not-ready: "<gray>플러그인이 아직 준비 중입니다. 잠시 후 다시 시도해주세요.</gray>"
 

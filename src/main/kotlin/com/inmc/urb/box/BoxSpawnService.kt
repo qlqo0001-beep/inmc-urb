@@ -321,6 +321,8 @@ class BoxSpawnService(private val urb: Urb) {
             expiresAt = box.effectiveDespawnSeconds().let { if (it > 0) now + it * 1000L else 0L },
         )
         index(spawned)
+        // 블록과 같은 틱에 같은 청크에 적는다 — 디스크에 둘이 함께 닿는다(BoxMarks).
+        BoxMarks.add(block.chunk, key, original, box.block)
         stateDirty = true
         return spawned
     }
@@ -400,6 +402,7 @@ class BoxSpawnService(private val urb: Urb) {
         } catch (_: IllegalArgumentException) {
             block.setType(Material.AIR, false)
         }
+        BoxMarks.remove(block.chunk, key)
     }
 
     fun removePending(pending: PendingSpawn, announce: Boolean) {
@@ -546,6 +549,9 @@ class BoxSpawnService(private val urb: Urb) {
             stateDirty = true
         }
 
+        // 대기열을 놓기 전에 — 고아 자리에 새 상자가 그 고아를 "원래 블록"으로 적지 않게.
+        settleChunk(chunk)
+
         val waiting = pendingByChunk.remove(key) ?: return
         // 복원과 같은 이유로 다른 월드 것은 둔다.
         val (mine, others) = waiting.partition { it.world == chunk.world.name }
@@ -582,6 +588,43 @@ class BoxSpawnService(private val urb: Urb) {
             }
         }
         if (pendingByBox.isNotEmpty()) pendingByBox.values.removeIf { it.isEmpty() }
+    }
+
+    /**
+     * 이 청크의 상자 표시([BoxMarks])와 추적을 맞춘다 — 강제 종료로 월드와 `state.yml` 이 어긋난 것을 여기서 푼다.
+     *
+     *  - 표시는 있는데 추적하지 않는 자리 = 지운 상자의 블록이 디스크에 남은 고아 → 표시의 원래 블록으로 되돌린다.
+     *  - 추적하는데 표시가 없는 상자 = 놓은 블록이 디스크에 못 닿았다(또는 표시가 생기기 전에 놓인 상자) → 추적을 접고
+     *    원래 블록으로 되돌린다. 고정 설치면 그 자리에 다시 세운다(이번엔 표시와 함께).
+     *
+     * 청크가 올라올 때와 켜질 때(이미 올라와 있던 청크) 부른다. 표시가 없는 청크는 PDC 조회 한 번으로 끝난다.
+     * @return 되돌린 고아 수
+     */
+    private fun settleChunk(chunk: Chunk): Int {
+        val world = chunk.world
+        val marks = BoxMarks.read(chunk)
+
+        var orphans = 0
+        for (mark in marks) {
+            val key = BlockKey(world.name, mark.x, mark.y, mark.z)
+            if (byBlock.containsKey(key)) continue
+            applyRestore(world, key, mark.blockData, mark.ref?.let { BlockRef.parse(it) })
+            orphans++
+        }
+
+        val unmarked = byChunk[chunk.chunkKey].orEmpty().toList().filter { spawned ->
+            spawned.key.world == world.name && marks.none { it.x == spawned.key.x && it.y == spawned.key.y && it.z == spawned.key.z }
+        }
+        for (spawned in unmarked) {
+            remove(spawned, announce = false)
+            val box = urb.boxes.get(spawned.boxName) ?: continue
+            if (box.enabled && box.isPermanent && spawned.key in box.fixedPoints) {
+                place(box, world, spawned.key.x, spawned.key.y, spawned.key.z, replaceBlock = true)
+            }
+        }
+
+        if (orphans > 0 || unmarked.isNotEmpty()) stateDirty = true
+        return orphans
     }
 
     // --- announcements ---------------------------------------------------------
@@ -765,7 +808,7 @@ class BoxSpawnService(private val urb: Urb) {
      *
      * 꺼질 때 치우면 "꺼져 있는 동안 만료된 상자" 가 생기지 않는다. 청크가 내려가 있어
      * 못 되돌린 것은 복원 항목으로 남기고, 켜질 때 기동 정리가 지운다. 강제 로드는
-     * 종료 때도 하지 않는다.
+     * 종료 때도 하지 않는다. 강제 종료라 여기를 못 지나면 [BoxMarks] 가 받는다.
      */
     fun removeAllForShutdown(includePermanent: Boolean) {
         var swept = 0
@@ -794,6 +837,10 @@ class BoxSpawnService(private val urb: Urb) {
      * 놓인 것은 `remove` 로 치우고(내려간 청크는 복원 항목으로), 대기열은 파기하고,
      * 로드된 청크의 복원 항목은 그 자리에서 적용한다. 강제 로드는 여기서도 하지 않는다.
      * 고정 설치는 손대지 않는다. 메인 스레드에서 1회.
+     *
+     * `state.yml` 에 없는 고아(강제 종료로 지운 것이 디스크에 못 닿은 블록)는 로드된 청크의 [BoxMarks] 로 찾는다 —
+     * 내려가 있는 청크는 올라올 때 [onChunkLoad] 가. 고정 설치를 다시 세우기(`ensurePermanent`) **전에** 불러야 한다.
+     * 그 자리에 남은 블록을 새 상자가 "원래 블록"으로 적으면 영영 못 지운다.
      */
     fun sweepStaleBoxes() {
         var swept = 0
@@ -828,8 +875,13 @@ class BoxSpawnService(private val urb: Urb) {
                 stateDirty = true
             }
         }
-        if (swept > 0 || dropped > 0 || restored > 0) {
-            urb.logger.info("기동 정리 완료 - 상자 ${swept}개 복원, 대기 ${dropped}개 파기, 연기 복원 ${restored}개 적용")
+        // 준비 전에 올라온 청크는 onChunkLoad 를 지나지 않았다 — 강제 종료가 남긴 고아를 여기서.
+        var orphans = 0
+        for (world in Bukkit.getWorlds()) {
+            for (chunk in world.loadedChunks) orphans += settleChunk(chunk)
+        }
+        if (swept > 0 || dropped > 0 || restored > 0 || orphans > 0) {
+            urb.logger.info("기동 정리 완료 - 상자 ${swept}개 복원, 대기 ${dropped}개 파기, 연기 복원 ${restored}개 적용, 고아 ${orphans}개 되돌림")
         }
     }
 

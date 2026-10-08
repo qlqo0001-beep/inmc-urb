@@ -210,6 +210,8 @@ class RandomBox(val name: String) {
     var keyLegacy: StoredItem? = null
     var capsuleLegacy: StoredItem? = null
     var moneyCost: Double = 0.0
+    /** 소모될 돈의 화폐 id — 비우면 기본 화폐(2026-10-08). */
+    var currency: String = ""
 
     // --- spawning ----------------------------------------------------------
     var spawnMode: SpawnMode = SpawnMode.RANDOM_AREA
@@ -388,6 +390,7 @@ class RandomBox(val name: String) {
         config.set("open.commands", openCommands)
 
         config.set("conditions.money", moneyCost)
+        config.set("conditions.currency", currency.takeIf { it.isNotBlank() })
         config.set("conditions.key", null)
         keyItem?.save(config.createSection("conditions.key"))
         config.set("conditions.capsule", null)
@@ -497,6 +500,7 @@ class RandomBox(val name: String) {
             box.openCommands = config.getStringList("open.commands").toMutableList()
 
             box.moneyCost = config.getDouble("conditions.money", 0.0)
+            box.currency = config.getString("conditions.currency").orEmpty()
             box.keyItem = config.getConfigurationSection("conditions.key")?.let { StoredItem.load(it) }
             box.capsuleItem = config.getConfigurationSection("conditions.capsule")?.let { StoredItem.load(it) }
 

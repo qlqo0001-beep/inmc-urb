@@ -30,6 +30,11 @@ class Messages(values: Map<String, String>) : MessageCatalog<Ph>(values, DEFAULT
             "usage-player" to "<gray>사용 가능: <white>/urb info</white>, <white>/urb search</white>, <white>/urb notice</white>, <white>/urb ranking</white></gray>",
             "reloading" to "<gray>설정을 다시 읽는 중...</gray>",
             "reloaded" to "<green>설정을 다시 읽었습니다. (상자 {개수}개)</green>",
+            "verify-done" to "<gold>상자 검증</gold> <gray>— 통과 <green>{수량}</green> · 실패 <red>{개수}</red>{아이템}</gray>",
+            "verify-failure" to "<red> ✘ {아이템}</red>",
+            "verify-skipped" to "<gray> – {아이템}</gray>",
+            "verify-report" to "<gray>결과 파일: <white>{아이템}</white></gray>",
+            "holograms-swept" to "<green>상자 없이 떠 있던 홀로그램 {개수}개를 치웠습니다.</green>",
             "reload-menu-closed" to "<gray>설정을 다시 읽어 열려 있던 창을 닫았습니다. 다시 열어주세요.</gray>",
             "not-ready" to "<gray>플러그인이 아직 준비 중입니다. 잠시 후 다시 시도해주세요.</gray>",
 

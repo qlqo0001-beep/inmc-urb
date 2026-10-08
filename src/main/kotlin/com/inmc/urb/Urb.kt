@@ -118,11 +118,12 @@ class Urb(override val plugin: JavaPlugin) : InmcHost {
                             CorePlugin.get().players.whenReady {
                                 importPlayerNames()
                                 ready = true
+                                // 종료 정리를 못 한 채 켜졌으면(크래시·강제 종료) 남아 있던 비고정 상자와 고아 블록을 지운다.
+                                // 깨끗한 종료 뒤에는 지울 것이 없어 조용하다. 메인 스레드 1회.
+                                // 고정 설치보다 먼저 — 남은 블록 위에 다시 세우면 그 블록을 "원래 블록"으로 적는다.
+                                spawns.sweepStaleBoxes()
                                 // Permanent installations re-assert themselves on every boot.
                                 boxes.all().forEach { spawns.ensurePermanent(it) }
-                                // 종료 정리를 못 한 채 켜졌으면(크래시) 남아 있던 비고정 상자를 추적해 지운다.
-                                // 깨끗한 종료 뒤에는 지울 것이 없어 조용하다. 메인 스레드 1회.
-                                spawns.sweepStaleBoxes()
                                 then()
                             }
                         }

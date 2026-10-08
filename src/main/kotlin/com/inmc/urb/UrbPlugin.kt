@@ -73,6 +73,23 @@ class UrbPlugin : JavaPlugin() {
         )
     }
 
+    /**
+     * 연동용 안정 진입점 — inmc-dungeon 이 보상 상자(보물방·보스)에서 리플렉션으로 부른다(2026-10-08).
+     * 열쇠·돈·조건·쿨타임 없이 그 상자의 표를 굴려 [player] 에게 준다. 연출·받은 것 알림·당첨 공지·명령은 상자 설정 그대로, 열기 방송은 안 한다.
+     * 상자가 없거나 꺼졌거나 아직 준비 전이면 false. 이름·인자를 바꾸면 양쪽 CHANGELOG 에 적는다(ARCHITECTURE "리플렉션 진입점").
+     */
+    fun grant(player: org.bukkit.entity.Player, boxName: String): Boolean {
+        if (!::urb.isInitialized || !urb.ready) return false
+        val box = urb.boxes.get(boxName) ?: return false
+        if (!box.enabled) return false
+        urb.opens.deliver(player, box, player.location, announceOpen = false)
+        return true
+    }
+
+    /** 연동용 — 상자 이름 전부(inmc-dungeon 검증기가 보상 상자 이름을 확인한다). 준비 전이면 빈 목록. */
+    fun boxNames(): List<String> =
+        if (!::urb.isInitialized || !urb.ready) emptyList() else urb.boxes.all().map { it.name }
+
     override fun onDisable() {
         if (!::urb.isInitialized) return
         // 람다가 이 플러그인의 객체와 클래스로더를 붙들고 있다.

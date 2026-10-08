@@ -112,7 +112,8 @@ class ConditionMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 45, title(
             Icon.of(
                 Material.GOLD_INGOT, "<yellow>소모될 돈</yellow>",
                 buildList {
-                    add("<gray>현재: <white>${if (box.moneyCost > 0) Numbers.money(box.moneyCost) + "원" else "없음"}</white></gray>")
+                    add("<gray>현재: <white>${if (box.moneyCost > 0) urb.economy.format(box.moneyCost, box.currency) else "없음"}</white></gray>")
+                    if (box.moneyCost > 0 && box.currency.isNotBlank()) add("<gray>화폐: <white>${urb.economy.currencyName(box.currency)}</white></gray>")
                     if (box.moneyCost > 0 && !urb.economy.isEnabled) {
                         add("<red>⚠ Vault 경제 플러그인이 없어 적용되지 않습니다.</red>")
                     }
@@ -125,6 +126,7 @@ class ConditionMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 45, title(
             val player = event.whoClicked as? Player ?: return@set
             if (event.isRightClick) {
                 box.moneyCost = 0.0
+                box.currency = ""
                 save(); redraw(player)
                 return@set
             }
@@ -138,7 +140,10 @@ class ConditionMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 45, title(
                 onCancel = { reopen(player) },
             ) { value ->
                 box.moneyCost = value
-                save(); reopen(player)
+                // 화폐가 여럿이면 고른다(사용자 결정 2026-10-08) — 하나뿐이면 묻지 않는다.
+                if (value > 0 && urb.economy.multiCurrency) {
+                    kr.inmc.core.gui.CurrencyPick.open(urb, player, box.currency, back = { save(); reopen(player) }) { box.currency = it; save(); reopen(player) }
+                } else { save(); reopen(player) }
             }
         }
 

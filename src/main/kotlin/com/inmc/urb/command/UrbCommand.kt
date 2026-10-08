@@ -139,6 +139,17 @@ class UrbCommand(private val urb: Urb) {
             )
             .then(Commands.literal("log").requires(::isAdmin).executes { ctx -> log(ctx.source.sender) })
             .then(Commands.literal("reload").requires(::isAdmin).executes { ctx -> reload(ctx.source.sender) })
+            // 상자 없이 떠 있는 우리 홀로그램 치우기(관리자 도구, 2026-10-08).
+            .then(Commands.literal("cleanup").requires(::isAdmin).executes { ctx ->
+                urb.messages.send(ctx.source.sender, "holograms-swept", Ph.of().count(urb.visuals.sweepStray()))
+                SUCCESS
+            })
+            // 서버 안 자동 검증(2026-10-08) — 정의·추첨기·조건·소환·홀로그램·진입점·화면.
+            .then(Commands.literal("verify").requires(::isAdmin).executes { ctx ->
+                (ctx.source.sender as? org.bukkit.entity.Player)?.let { com.inmc.urb.verify.Verifier(urb).run(it) }
+                    ?: urb.messages.send(ctx.source.sender, "player-only")
+                SUCCESS
+            })
 
             // --- everyone ---
             .then(
