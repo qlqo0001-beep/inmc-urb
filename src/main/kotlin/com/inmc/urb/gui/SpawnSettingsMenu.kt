@@ -10,6 +10,7 @@ import kr.inmc.core.item.BlockRef
 import com.inmc.urb.util.BlockKey
 import kr.inmc.core.gui.Editors
 import kr.inmc.core.gui.Icon
+import kr.inmc.core.gui.ItemInputMenu
 import kr.inmc.core.util.Durations
 import kr.inmc.core.util.Text
 import org.bukkit.Bukkit
@@ -105,6 +106,8 @@ class SpawnSettingsMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, ti
                         "",
                         "<yellow>▶ 좌클릭: 현재 위치를 코너 1 로</yellow>",
                         "<yellow>▶ 우클릭: 현재 위치를 코너 2 로</yellow>",
+                        "<gray>  WorldEdit 선택이 있으면 좌·우클릭 모두</gray>",
+                        "<gray>  선택 영역(X·Z)으로 두 코너를 한 번에</gray>",
                         "<yellow>▶ Shift+좌클릭: 좌표 직접 입력</yellow>",
                         "<yellow>▶ Shift+우클릭: 원형으로 전환</yellow>",
                     )
@@ -112,6 +115,9 @@ class SpawnSettingsMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, ti
             )
         ) { event ->
             val player = event.whoClicked as? Player ?: return@set
+            // WorldEdit 선택이 있으면 그것이 가장 정확하다 — 서서 두 번 찍는 것보다(core Selections, 2026-10-10).
+            // 영역은 평면이라 높이는 버린다. 없으면 아래의 서 있는 자리 방식 그대로.
+            val sel = if (circle || event.isShiftClick) null else selection(player)
             when {
                 event.isShiftClick && (circle || event.isRightClick) -> {
                     box.area = box.area.copy(shape = box.area.shape.toggle())
@@ -129,6 +135,15 @@ class SpawnSettingsMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, ti
                 }
 
                 circle -> promptRadius(player)
+
+                sel != null -> {
+                    box.area = box.area.copy(x1 = sel.minX, z1 = sel.minZ, x2 = sel.maxX, z2 = sel.maxZ)
+                    notify(player, "<green>WorldEdit 선택 영역으로 정했습니다: ${sel.minX}, ${sel.minZ} ~ ${sel.maxX}, ${sel.maxZ}</green>")
+                    if (sel.world.name != box.world) {
+                        notify(player, "<yellow>⚠ 선택은 '${sel.world.name}' 월드에 있고 상자 월드는 '${box.world}' 입니다. 그 월드에서 월드 버튼을 눌러 맞추세요.</yellow>")
+                    }
+                    save(); redraw(player)
+                }
 
                 event.isLeftClick -> {
                     box.area = box.area.copy(x1 = player.location.blockX, z1 = player.location.blockZ)
@@ -155,6 +170,7 @@ class SpawnSettingsMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, ti
                     }
                     add("")
                     add("<yellow>▶ 좌클릭: 현재 위치 추가</yellow>")
+                    add("<gray>  WorldEdit 으로 블록 하나를 선택해 두면 그 블록</gray>")
                     add("<yellow>▶ 우클릭: 가장 최근 좌표 제거</yellow>")
                     add("<red>▶ Shift+우클릭: 전체 비우기</red>")
                 },
@@ -164,14 +180,32 @@ class SpawnSettingsMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, ti
             when {
                 event.isShiftClick && event.isRightClick -> box.fixedPoints.clear()
                 event.isRightClick -> box.fixedPoints.removeLastOrNull()
-                event.isLeftClick -> box.fixedPoints.add(BlockKey.of(player.location))
+                event.isLeftClick -> {
+                    val sel = selection(player)
+                    when {
+                        sel == null -> box.fixedPoints.add(BlockKey.of(player.location))
+                        // 좌표 하나 = 블록 하나. 넓은 선택에서 한 점을 고르면 관리자가 생각한 자리와 다를 수 있으니 받지 않는다.
+                        sel.minX == sel.maxX && sel.minY == sel.maxY && sel.minZ == sel.maxZ -> {
+                            box.fixedPoints.add(BlockKey(sel.world.name, sel.minX, sel.minY, sel.minZ))
+                            notify(player, "<green>WorldEdit 으로 선택한 블록(${sel.world.name} ${sel.minX}, ${sel.minY}, ${sel.minZ})을 추가했습니다.</green>")
+                        }
+                        else -> {
+                            notify(
+                                player,
+                                "<red>WorldEdit 선택이 블록 하나가 아닙니다. 한 블록만 선택하거나(//pos1 과 //pos2 를 같은 자리에), " +
+                                    "<white>//sel</white> 로 선택을 지우면 서 있는 자리로 추가합니다.</red>",
+                            )
+                            return@set
+                        }
+                    }
+                }
             }
             save(); redraw(player)
         }
 
-        // Registered from the hand rather than picked from a list of every material: building
+        // Registered by placing the block item (core ItemInputMenu) rather than picked from a list of every material: building
         // that list called Material.isBlock() ~1500 times, which drags in Bukkit's legacy
-        // conversion tables and froze the server for over ten seconds. Holding the block also
+        // conversion tables and froze the server for over ten seconds. Handing over the block item also
         // happens to be the only way to name an ItemsAdder custom block at all.
         set(
             14,
@@ -183,9 +217,9 @@ class SpawnSettingsMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, ti
                     add("<dark_gray>돌로 지정하면 돌처럼 보이지만</dark_gray>")
                     add("<dark_gray>클릭하면 상자 창이 열립니다.</dark_gray>")
                     add("<dark_gray>커스텀아이템 블록(inmc:…)·ItemsAdder 커스텀 블록도</dark_gray>")
-                    add("<dark_gray>손에 들고 누르면 그 모양이 됩니다.</dark_gray>")
+                    add("<dark_gray>올려서 등록하면 그 모양이 됩니다.</dark_gray>")
                     add("")
-                    add("<yellow>▶ 좌클릭: 손에 든 블록으로 설정</yellow>")
+                    add("<yellow>▶ 좌클릭: 블록을 올려 설정</yellow>")
                     add("<red>▶ 우클릭: 기본값(상자)으로 되돌리기</red>")
                 },
             )
@@ -196,23 +230,24 @@ class SpawnSettingsMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, ti
                 save(); redraw(player)
                 return@set
             }
-            val hand = player.inventory.itemInMainHand
-            if (hand.type.isAir) {
-                player.sendMessage(Text.render("<red>손에 블록을 든 뒤 클릭하세요.</red>", null, player))
-                return@set
-            }
-            val ref = BlockRef.fromItem(hand, urb.customItems)
-            if (ref == null) {
-                player.sendMessage(
-                    Text.render(
-                        "<red>'${hand.type.name}' 은(는) 설치할 수 있는 블록이 아닙니다.</red>",
-                        null, player,
+            ItemInputMenu(
+                urb, player, "상자 블록",
+                listOf("<gray>상자로 쓸 블록 아이템.</gray>", "<dark_gray>커스텀아이템 블록(inmc:…)·ItemsAdder 커스텀 블록도 됩니다.</dark_gray>"),
+                back = { reopen(player) },
+            ) { stack ->
+                val ref = BlockRef.fromItem(stack, urb.customItems)
+                if (ref == null) {
+                    player.sendMessage(
+                        Text.render(
+                            "<red>'${stack.type.name}' 은(는) 설치할 수 있는 블록이 아닙니다.</red>",
+                            null, player,
+                        )
                     )
-                )
-                return@set
-            }
-            box.block = ref
-            save(); redraw(player)
+                } else {
+                    box.block = ref
+                    save(); reopen(player)
+                }
+            }.show()
         }
 
         set(
@@ -450,6 +485,11 @@ class SpawnSettingsMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 54, ti
         }
     }
 
+
+    /** 관리자의 WorldEdit/FAWE 선택(core [kr.inmc.core.integration.Selections] — 둘 다 없으면 null). */
+    private fun selection(player: Player) = kr.inmc.core.integration.Selections.of(player)
+
+    private fun notify(player: Player, text: String) = player.sendMessage(Text.render(text, null, player))
 
     private fun save() = urb.boxes.markDirty(box)
 

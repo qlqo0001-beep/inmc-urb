@@ -3,6 +3,7 @@ package com.inmc.urb.gui
 import com.inmc.urb.Urb
 import com.inmc.urb.box.RandomBox
 import kr.inmc.core.gui.Icon
+import kr.inmc.core.gui.ItemInputMenu
 import kr.inmc.core.util.Numbers
 import kr.inmc.core.util.Text
 import org.bukkit.Material
@@ -11,8 +12,8 @@ import org.bukkit.entity.Player
 /**
  * Open conditions (spec §74-77): the capsule item, the key item and the money cost.
  *
- * Items are registered from the player's main hand rather than by dragging into a slot -
- * there is then no window in which the admin's item could be swallowed by the GUI.
+ * Items are registered through core [ItemInputMenu] (a copy is placed and 등록 is pressed) rather than
+ * by dragging into a slot - the admin's item never leaves their inventory, so the GUI cannot swallow it.
  */
 class ConditionMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 45, title(box)) {
 
@@ -36,7 +37,7 @@ class ConditionMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 45, title(
                         "<gray>손에 들고 우클릭하면 이 상자가 열립니다.</gray>",
                         "<dark_gray>아이템 종류와 이름으로 인식합니다.</dark_gray>",
                         "",
-                        "<yellow>▶ 좌클릭: 손에 든 아이템으로 변경</yellow>",
+                        "<yellow>▶ 좌클릭: 아이템을 올려 변경</yellow>",
                         "<red>▶ 우클릭: 제거</red>",
                     ),
                 )
@@ -46,23 +47,27 @@ class ConditionMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 45, title(
                     "<gray>현재: <white>없음</white></gray>",
                     "<gray>손에 들고 우클릭하면 이 상자가 열립니다.</gray>",
                     "",
-                    "<yellow>▶ 좌클릭: 손에 든 아이템으로 설정</yellow>",
+                    "<yellow>▶ 좌클릭: 아이템을 올려 설정</yellow>",
                 )
             }
         ) { event ->
             val player = event.whoClicked as? Player ?: return@set
-            val hand = player.inventory.itemInMainHand
-            if (!event.isRightClick && hand.type.isAir) {
-                player.sendMessage(Text.render("<red>손에 아이템을 든 뒤 클릭하세요.</red>", null, player))
+            if (event.isRightClick) {
+                if (!com.inmc.urb.box.UrbRoles.set(urb, box, com.inmc.urb.box.UrbRoles.CAPSULE, null)) box.capsuleItem = null
+                save()
+                urb.boxes.rebuildCapsuleIndex()
+                redraw(player)
                 return@set
             }
-            // 커스텀아이템이 있으면 그 아이템을 커스텀아이템으로 만들어 "상자 캡슐" 역할을 붙인다(양쪽에서 보인다).
-            if (!com.inmc.urb.box.UrbRoles.set(urb, box, com.inmc.urb.box.UrbRoles.CAPSULE, if (event.isRightClick) null else hand)) {
-                box.capsuleItem = if (event.isRightClick) null else urb.itemResolver.capture(hand)
-            }
-            save()
-            urb.boxes.rebuildCapsuleIndex()
-            redraw(player)
+            ItemInputMenu(urb, player, "캡슐 아이템", listOf("<gray>손에 들고 우클릭하면 이 상자가 열립니다.</gray>"), back = { reopen(player) }) { stack ->
+                // 커스텀아이템이 있으면 그 아이템을 커스텀아이템으로 만들어 "상자 캡슐" 역할을 붙인다(양쪽에서 보인다).
+                if (!com.inmc.urb.box.UrbRoles.set(urb, box, com.inmc.urb.box.UrbRoles.CAPSULE, stack)) {
+                    box.capsuleItem = urb.itemResolver.capture(stack)
+                }
+                save()
+                urb.boxes.rebuildCapsuleIndex()
+                reopen(player)
+            }.show()
         }
 
         val key = box.keyItem
@@ -81,7 +86,7 @@ class ConditionMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 45, title(
                         "<gray>인벤토리에 있어야 상자가 열리며,</gray>",
                         "<gray>열 때 1개가 소모됩니다.</gray>",
                         "",
-                        "<yellow>▶ 좌클릭: 손에 든 아이템으로 변경</yellow>",
+                        "<yellow>▶ 좌클릭: 아이템을 올려 변경</yellow>",
                         "<red>▶ 우클릭: 제거</red>",
                     ),
                 )
@@ -91,20 +96,22 @@ class ConditionMenu(urb: Urb, private val box: RandomBox) : Menu(urb, 45, title(
                     "<gray>현재: <white>없음</white></gray>",
                     "<gray>설정하면 상자를 열 때 1개가 소모됩니다.</gray>",
                     "",
-                    "<yellow>▶ 좌클릭: 손에 든 아이템으로 설정</yellow>",
+                    "<yellow>▶ 좌클릭: 아이템을 올려 설정</yellow>",
                 )
             }
         ) { event ->
             val player = event.whoClicked as? Player ?: return@set
-            val hand = player.inventory.itemInMainHand
-            if (!event.isRightClick && hand.type.isAir) {
-                player.sendMessage(Text.render("<red>손에 아이템을 든 뒤 클릭하세요.</red>", null, player))
+            if (event.isRightClick) {
+                if (!com.inmc.urb.box.UrbRoles.set(urb, box, com.inmc.urb.box.UrbRoles.KEY, null)) box.keyItem = null
+                save(); redraw(player)
                 return@set
             }
-            if (!com.inmc.urb.box.UrbRoles.set(urb, box, com.inmc.urb.box.UrbRoles.KEY, if (event.isRightClick) null else hand)) {
-                box.keyItem = if (event.isRightClick) null else urb.itemResolver.capture(hand)
-            }
-            save(); redraw(player)
+            ItemInputMenu(urb, player, "열쇠 아이템", listOf("<gray>인벤토리에 있어야 상자가 열리며,</gray>", "<gray>열 때 1개가 소모됩니다.</gray>"), back = { reopen(player) }) { stack ->
+                if (!com.inmc.urb.box.UrbRoles.set(urb, box, com.inmc.urb.box.UrbRoles.KEY, stack)) {
+                    box.keyItem = urb.itemResolver.capture(stack)
+                }
+                save(); reopen(player)
+            }.show()
         }
 
         set(

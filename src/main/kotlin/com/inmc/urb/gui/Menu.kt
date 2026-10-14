@@ -25,7 +25,7 @@ abstract class Menu(
     override val owner: Any get() = urb
 
     /**
-     * 상자 블록 모양의 아이콘. 커스텀 블록은 [BlockRef.iconMaterial] 이 손에 들었던 아이템의
+     * 상자 블록 모양의 아이콘. 커스텀 블록은 [BlockRef.iconMaterial] 이 등록할 때 올린 아이템의
      * 바탕 재료(대개 종이)라서, 그 플러그인에서 실제 아이템을 받아 모델을 그대로 보여 준다.
      */
     protected fun blockIcon(box: RandomBox, name: String, lore: List<String>): ItemStack {
