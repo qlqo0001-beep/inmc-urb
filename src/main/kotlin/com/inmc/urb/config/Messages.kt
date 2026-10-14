@@ -75,6 +75,7 @@ class Messages(values: Map<String, String>) : MessageCatalog<Ph>(values, DEFAULT
             "open-busy" to "<red>이미 다른 상자를 여는 중입니다.</red>",
             "open-taken" to "<gray>누군가 먼저 상자를 열었습니다.</gray>",
             "open-inventory-full" to "<yellow>인벤토리가 가득 차서 일부 아이템을 바닥에 떨어뜨렸습니다.</yellow>",
+            "open-inventory-full-mail" to "<yellow>인벤토리가 가득 차서 일부 아이템을 우편으로 보냈습니다.</yellow>",
 
             "open-personal-cooldown" to "<red>{상자이름} 상자는 {시간} 후에 다시 열 수 있습니다.</red>",
             "open-limit-reached" to "<red>{상자이름} 상자는 최대 {개수}번까지만 열 수 있습니다.</red>",

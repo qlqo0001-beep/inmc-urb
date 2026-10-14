@@ -136,8 +136,12 @@ class TrackingService(private val urb: Urb) {
             urb.bossBars.hide(playerId, BossBars.TRACK)
             if (playerId == opener?.uniqueId) continue
             val player = Bukkit.getPlayer(playerId) ?: continue
-            if (opener != null) urb.messages.send(player, "track-opened", Ph.of().box(target.displayName).player(opener))
-            else urb.messages.send(player, "track-gone")
+            // 투명인 사람이 연 것은 그를 볼 수 없는 사람에게 "사라졌다"로만 알린다(이름이 새지 않게).
+            if (opener != null && kr.inmc.core.integration.Vanish.canSee(player, opener)) {
+                urb.messages.send(player, "track-opened", Ph.of().box(target.displayName).player(opener))
+            } else {
+                urb.messages.send(player, "track-gone")
+            }
         }
     }
 

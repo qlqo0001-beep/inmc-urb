@@ -61,6 +61,23 @@ private class UrbExpansion(private val urb: Urb) : PlaceholderExpansion() {
 
     override fun persist(): Boolean = true
 
+    /**
+     * `/papi info urb` 와 자동 완성에 보이는 목록(2026-10-10). 상자마다의 키는 지금 있는 상자 이름으로, 순위는 1~10위로 펼친다.
+     * 키를 더하면 여기에도 — [onRequest] 의 분기와 한 벌이다.
+     */
+    override fun getPlaceholders(): List<String> {
+        val names = urb.boxes.all().map { it.name }
+        val keys = buildList {
+            addAll(STATIC_KEYS)
+            for (prefix in BOX_KEYS) names.forEach { add(prefix + it) }
+            for (rank in 1..TOP_RANKS) {
+                add("top_name_$rank")
+                add("top_opens_$rank")
+            }
+        }
+        return keys.map { "%urb_$it%" }
+    }
+
     override fun onRequest(player: OfflinePlayer?, params: String): String? {
         val online = player as? Player ?: (player?.uniqueId?.let { Bukkit.getPlayer(it) })
 
@@ -135,6 +152,18 @@ private class UrbExpansion(private val urb: Urb) : PlaceholderExpansion() {
 
             else -> null
         }
+    }
+
+    private companion object {
+        val STATIC_KEYS = listOf(
+            "spawned_total", "pending_total", "box_count", "opens_total", "my_opens", "my_rank",
+            "search_cooldown", "nearest", "nearest_box", "nearest_distance",
+        )
+
+        /** 뒤에 상자 이름이 붙는 키. */
+        val BOX_KEYS = listOf("spawned_", "opens_", "remaining_", "next_", "schedule_")
+
+        const val TOP_RANKS = 10
     }
 
     private fun nearest(player: Player?): com.inmc.urb.box.BoxSighting? =

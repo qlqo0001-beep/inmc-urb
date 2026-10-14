@@ -76,14 +76,43 @@ class UrbPlugin : JavaPlugin() {
     /**
      * 연동용 안정 진입점 — inmc-dungeon 이 보상 상자(보물방·보스)에서 리플렉션으로 부른다(2026-10-08).
      * 열쇠·돈·조건·쿨타임 없이 그 상자의 표를 굴려 [player] 에게 준다. 연출·받은 것 알림·당첨 공지·명령은 상자 설정 그대로, 열기 방송은 안 한다.
+     * 보상은 **바닥에 두지 않는다**(2026-10-10 — 던전 월드는 곧 지워진다): 창(GUI)은 닫을 때 남은 것을 가방으로(넘침은 우편, 우편 창구가
+     * 없을 때만 발밑), 공중 투하(DROP)는 바로 가방으로.
      * 상자가 없거나 꺼졌거나 아직 준비 전이면 false. 이름·인자를 바꾸면 양쪽 CHANGELOG 에 적는다(ARCHITECTURE "리플렉션 진입점").
      */
     fun grant(player: org.bukkit.entity.Player, boxName: String): Boolean {
         if (!::urb.isInitialized || !urb.ready) return false
         val box = urb.boxes.get(boxName) ?: return false
         if (!box.enabled) return false
-        urb.opens.deliver(player, box, player.location, announceOpen = false)
+        urb.opens.deliver(player, box, player.location, announceOpen = false, keep = true)
         return true
+    }
+
+    /**
+     * 연동용 안정 진입점 — 열쇠·돈·조건 없이 그 상자의 표를 굴려 **아이템만 돌려준다**(2026-10-10). 주지도, 알리지도,
+     * 기록(열기 수·통계·신호)하지도 않는다. 보상의 명령어는 버린다 — 명령어까지 우편으로 보내려면 [rollForMail](inmc-dungeon 은
+     * 그쪽을 쓴다). 상자가 없거나 꺼졌거나 준비 전이면 null.
+     * 이름·인자를 바꾸면 양쪽 CHANGELOG 에 적는다(ARCHITECTURE "리플렉션 진입점").
+     */
+    fun roll(boxName: String): List<org.bukkit.inventory.ItemStack>? {
+        if (!::urb.isInitialized || !urb.ready) return null
+        val box = urb.boxes.get(boxName) ?: return null
+        if (!box.enabled) return null
+        return urb.opens.roll(box)
+    }
+
+    /**
+     * 연동용 안정 진입점 — [roll] 과 같지만 **명령어도** 돌려준다(2026-10-10). 접속하지 않은 사람에게 우편 한 통으로 보낼 것:
+     * `"items"` → `List<ItemStack>`, `"commands"` → `List<String>`(보상의 명령어 + 상자의 열 때 명령어 — `grant` 로 받는 사람과 같은 몫).
+     * 명령어의 받는 사람 자리는 core 우편의 `{player}`(`Mail.PLAYER_TOKEN`)로 바꿔 두었으니 `Mail.send(commands = …)` 에 그대로 넣는다.
+     * 상자가 없거나 꺼졌거나 준비 전이면 null. 이름·인자를 바꾸면 양쪽 CHANGELOG 에 적는다(ARCHITECTURE "리플렉션 진입점").
+     */
+    fun rollForMail(boxName: String): Map<String, List<Any>>? {
+        if (!::urb.isInitialized || !urb.ready) return null
+        val box = urb.boxes.get(boxName) ?: return null
+        if (!box.enabled) return null
+        val (items, commands) = urb.opens.rollForMail(box)
+        return mapOf("items" to items, "commands" to commands)
     }
 
     /** 연동용 — 상자 이름 전부(inmc-dungeon 검증기가 보상 상자 이름을 확인한다). 준비 전이면 빈 목록. */

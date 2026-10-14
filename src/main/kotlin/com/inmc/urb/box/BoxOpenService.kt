@@ -364,6 +364,9 @@ class BoxOpenService(private val urb: Urb) {
      * The roll happens here and nowhere else, *before* any animation. Everything downstream -
      * the reveal window, the flourish, the commands, the broadcast - works from an already
      * decided result, so nothing a player does mid-animation can change what they get.
+     *
+     * [keep] 은 연동 진입점(`UrbPlugin.grant`)용 — 보상을 **바닥에 두지 않는다**(2026-10-10). 창(GUI)은 닫을 때 남은 것을
+     * 가방으로(넘침은 우편), 공중 투하(DROP)는 바로 가방으로. 던전 월드처럼 곧 지워지는 곳에서 주기 때문이다.
      */
     fun deliver(
         player: Player,
@@ -371,12 +374,44 @@ class BoxOpenService(private val urb: Urb) {
         at: Location?,
         announceOpen: Boolean,
         scope: com.inmc.urb.util.BlockKey? = null,
+        keep: Boolean = false,
     ) {
         if (box.rewards.isEmpty()) {
             urb.messages.send(player, "box-no-rewards", Ph.of().box(box.displayName))
             return
         }
 
+        val (rolled, items, commands, amounts) = rollLoot(box)
+
+        urb.openRecords.record(player.uniqueId, box, scope)
+        urb.stats.record(player, box, amounts, at)
+
+        // "이 사람이 이 상자를 열었다" 를 core 의 신호로 알린다. 듣는 쪽이 하나도 없으면
+        // 이벤트 객체조차 만들지 않으므로 평소 비용이 0 이다. 이 플러그인은 누가 듣는지 모른다.
+        kr.inmc.core.event.InmcSignalEvent.fire(
+            source = "urb",
+            type = "open",
+            playerId = player.uniqueId,
+            subject = box.name,
+            player = player,
+        ) {
+            mapOf("box" to box.name, "rewards" to amounts.size.toString())
+        }
+
+        present(player, box, items, jackpot = rolled.any { it.announce }) {
+            handOver(player, box, at, items, rolled, commands, announceOpen, keep)
+        }
+    }
+
+    /** 한 번 굴린 결과 — [deliver] 와 [roll](연동 진입점)이 같은 굴림을 쓴다. */
+    private data class Loot(
+        val rolled: List<Reward>,
+        val items: List<ItemStack>,
+        val commands: List<String>,
+        val amounts: List<Pair<Reward, Int>>,
+    )
+
+    private fun rollLoot(box: RandomBox): Loot {
         // One selection per pool: a box with no tiers yields exactly one pool using the
         // box-level min/max, which is the pre-tier behaviour unchanged.
         val rolled = box.rollGroups().flatMap {
@@ -395,25 +430,25 @@ class BoxOpenService(private val urb: Urb) {
             }
             commands.addAll(reward.commands)
         }
+        return Loot(rolled, items, commands, amounts)
+    }
 
-        urb.openRecords.record(player.uniqueId, box, scope)
-        urb.stats.record(player, box, amounts, at)
+    /**
+     * 표만 굴려 아이템을 돌려준다 — 주지도, 알리지도, 기록하지도 않는다(연동 진입점 `UrbPlugin.roll`).
+     * 보상의 명령어는 버린다(아이템만) — 명령어까지 우편에 담으려면 [rollForMail].
+     */
+    fun roll(box: RandomBox): List<ItemStack> = rollLoot(box).items
 
-        // "이 사람이 이 상자를 열었다" 를 core 의 신호로 알린다. 듣는 쪽이 하나도 없으면
-        // 이벤트 객체조차 만들지 않으므로 평소 비용이 0 이다. 이 플러그인은 누가 듣는지 모른다.
-        kr.inmc.core.event.InmcSignalEvent.fire(
-            source = "urb",
-            type = "open",
-            playerId = player.uniqueId,
-            subject = box.name,
-            player = player,
-        ) {
-            mapOf("box" to box.name, "rewards" to amounts.size.toString())
-        }
-
-        present(player, box, items, jackpot = rolled.any { it.announce }) {
-            handOver(player, box, at, items, rolled, commands, announceOpen)
-        }
+    /**
+     * 표를 굴려 우편 한 통에 담을 것을 돌려준다(연동 진입점 `UrbPlugin.rollForMail`) — 아이템과, 받을 때 콘솔로 돌 명령어
+     * (보상의 명령어 + 상자의 열 때 명령어 — 접속해 있는 사람이 `grant` 로 받는 것과 같다). 받는 사람 자리는 core 우편의
+     * `{player}` 하나로 바꾸고 상자 이름은 미리 채운다. 좌표 자리는 채울 곳이 없어 그대로 둔다. 주지도, 알리지도, 기록하지도 않는다.
+     */
+    fun rollForMail(box: RandomBox): Pair<List<ItemStack>, List<String>> {
+        val loot = rollLoot(box)
+        val ph = Ph.of().player(kr.inmc.core.integration.Mail.PLAYER_TOKEN).box(box.displayName)
+        val commands = (loot.commands + box.openCommands).map { ph.apply(it).removePrefix("/").trim() }.filter { it.isNotEmpty() }
+        return loot.items to commands
     }
 
     /** Everything that happens once the loot is actually the player's. */
@@ -425,10 +460,13 @@ class BoxOpenService(private val urb: Urb) {
         rolled: List<Reward>,
         commands: List<String>,
         announceOpen: Boolean,
+        keep: Boolean = false,
     ) {
+        // [keep] 이면 공중 투하도 바로 가방으로 — 연동으로 준 보상은 바닥에 두지 않는다([deliver]).
+        val mode = box.effectiveOpenMode().let { if (keep && it == OpenMode.DROP) OpenMode.DIRECT else it }
         if (player.isOnline) {
-            when (box.effectiveOpenMode()) {
-                OpenMode.DIRECT -> giveDirect(player, items)
+            when (mode) {
+                OpenMode.DIRECT -> giveDirect(player, box, items)
                 // A permanent box hands its loot over rather than dropping leftovers on the
                 // floor, so the window is only ever a presentation layer for it.
                 OpenMode.GUI -> {
@@ -436,9 +474,9 @@ class BoxOpenService(private val urb: Urb) {
                     // down. The loot is already the player's by then, so fall back to handing
                     // it over directly rather than letting the window failure eat it.
                     val shown = runCatching {
-                        LootMenu(urb, box, items, returnToInventory = box.isPermanent).open(player)
+                        LootMenu(urb, box, items, returnToInventory = box.isPermanent || keep).open(player)
                     }.isSuccess
-                    if (!shown) giveDirect(player, items)
+                    if (!shown) giveDirect(player, box, items)
                 }
                 // Scatter where the box stood, not at the opener - the point of an airdrop is
                 // that everyone who made it there gets a shot at the pile.
@@ -448,13 +486,14 @@ class BoxOpenService(private val urb: Urb) {
             // 본인에게는 무엇을 얻었는지 늘 알린다(잡템이어도 — 서버 공지와 따로, 테섭 2026-10-02).
             if (rolled.isNotEmpty()) {
                 val got = rolled.joinToString("<gray>, </gray>") { "<white>${it.label()}</white>" }
-                val key = if (box.effectiveOpenMode() == OpenMode.GUI) "reward-received-window" else "reward-received"
+                val key = if (mode == OpenMode.GUI) "reward-received-window" else "reward-received"
                 urb.messages.send(player, key, Ph.of().box(box.displayName).item(got))
             }
         } else if (items.isNotEmpty()) {
-            // Disconnected mid-animation: the loot was already theirs, so drop it where the
-            // box stood rather than silently deleting it.
-            dropAt(at ?: player.location, items)
+            // Disconnected mid-animation: the loot was already theirs. 우편 창구가 있으면 우편으로(사용자 결정 2026-10-10 —
+            // 미수령 보상은 전부 우편). 없거나 공중 투하(DROP — 모두가 주우라고 뿌리는 방식)면 전처럼 상자 자리에 떨군다.
+            val mailed = mode != OpenMode.DROP && mail(player.uniqueId, box, items)
+            if (!mailed) dropAt(at ?: player.location, items)
         }
 
         for (reward in rolled) {
@@ -516,17 +555,23 @@ class BoxOpenService(private val urb: Urb) {
         for (item in items) world.dropItemNaturally(origin, item)
     }
 
-    private fun giveDirect(player: Player, items: List<ItemStack>) {
-        var overflowed = false
-        for (item in items) {
-            val leftovers = player.inventory.addItem(item)
-            for (leftover in leftovers.values) {
-                player.world.dropItemNaturally(player.location, leftover)
-                overflowed = true
-            }
+    private fun giveDirect(player: Player, box: RandomBox, items: List<ItemStack>) {
+        val overflow = items.flatMap { player.inventory.addItem(it).values }
+        if (overflow.isEmpty()) return
+        // 가방이 가득 차면 바닥 대신 우편으로(사용자 결정 2026-10-10). 창구가 없으면 전처럼 발밑에.
+        if (mail(player.uniqueId, box, overflow)) {
+            urb.messages.send(player, "open-inventory-full-mail")
+            return
         }
-        if (overflowed) urb.messages.send(player, "open-inventory-full")
+        for (leftover in overflow) player.world.dropItemNaturally(player.location, leftover)
+        urb.messages.send(player, "open-inventory-full")
     }
+
+    /** 우편 창구(core [kr.inmc.core.integration.Mail])로 보낸다. 창구가 없거나 거절하면 false — 부른 쪽이 제 길(바닥)로. */
+    fun mail(playerId: UUID, box: RandomBox, items: List<ItemStack>): Boolean =
+        items.isNotEmpty() && kr.inmc.core.integration.Mail.send(
+            playerId, origin = urb.plugin.name, source = "랜덤박스 ${Text.plain(box.displayName)}", stacks = items,
+        )
 
     private fun runCommands(player: Player, box: RandomBox, at: Location?, commands: List<String>) {
         if (commands.isEmpty()) return
@@ -546,7 +591,9 @@ class BoxOpenService(private val urb: Urb) {
 
     private fun announceReward(player: Player, box: RandomBox, reward: Reward) {
         val ph = Ph.of().player(player).box(box.displayName).item(reward.label())
-        urb.notices.record(player.name, box, reward)
+        // 투명인 사람의 당첨은 남는 공지 기록(/urb notice — 누구나 본다)에도 적지 않는다 — 접속해 있었다는 것이 드러난다.
+        val hidden = kr.inmc.core.integration.Vanish.isVanished(player)
+        if (!hidden) urb.notices.record(player.name, box, reward)
 
         val body = urb.messages.raw("reward-announce")
         if (body.isNotBlank()) {
@@ -554,11 +601,14 @@ class BoxOpenService(private val urb: Urb) {
             for (viewer in Bukkit.getOnlinePlayers()) {
                 // 개인 설정 "희귀 드랍·당첨 공지 받기"를 끈 사람은 빼고 — 당첨된 본인은 늘 본다(core PlayerSettings).
                 if (viewer != player && !kr.inmc.core.integration.PlayerSettings.enabled(viewer, kr.inmc.core.integration.PlayerSettings.RARE_ANNOUNCE)) continue
+                // 투명인 사람의 이름은 그를 볼 수 있는 사람에게만(본인 포함 — core Vanish).
+                if (!kr.inmc.core.integration.Vanish.canSee(viewer, player)) continue
                 viewer.sendMessage(Text.render(prefix + body, ph, viewer))
             }
         }
         val discord = urb.config.discord
-        if (discord.rewardEnabled) {
+        // 디스코드는 누가 보는지 모르는 곳 — 투명이면 보내지 않는다.
+        if (discord.rewardEnabled && !hidden) {
             urb.discord.enqueue(discord.rewardUrl(box.discordRewardWebhook), Text.plain(discord.rewardMessage, ph))
         }
     }
@@ -580,6 +630,8 @@ class BoxOpenService(private val urb: Urb) {
 
         val prefix = urb.messages.raw(kr.inmc.core.config.MessageCatalog.PREFIX)
         for (viewer in Bukkit.getOnlinePlayers()) {
+            // 투명인 사람이 연 것은 그를 볼 수 있는 사람에게만(본인 포함).
+            if (!kr.inmc.core.integration.Vanish.canSee(viewer, player)) continue
             viewer.sendMessage(Text.render(prefix + body, ph, viewer))
         }
     }
